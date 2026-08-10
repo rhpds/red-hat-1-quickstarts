@@ -102,8 +102,20 @@ approval_checklist:
     prerequisites_verifiable: false
     assessment_strategy: ""
     catalog_gap: ""
-    design_overview: ""
-    module_summaries: []
+    design_overview: "This 90-minute lab equips intermediate Red Hat Solution Architects to sell OpenShift AI and related products using Red Hat QuickStarts. Participants learn what a QuickStart is, then deploy and explore two featured QuickStarts — Secure Agent Workspace (secure, governed AI agent environments) and Private AI Coding Assistant (air-gapped AI-assisted development) — before touring the broader QuickStart family and leaving with concrete next steps for customer engagements."
+    module_summaries:
+      - title: "Selling with Red Hat QuickStarts: What Is a QuickStart?"
+        overview: "Presentation-style introduction to what a Red Hat QuickStart is and how it accelerates customer proofs-of-concept, previewing the two QuickStarts covered hands-on later in the lab."
+      - title: "Secure Agent Workspace — Deploy & Explore"
+        overview: "Participants deploy the Secure Agent Workspace QuickStart onto their OpenShift cluster and explore the resulting environment."
+      - title: "Secure Agent Workspace — Security & Governance Deep Dive"
+        overview: "Participants inspect and configure the RBAC and network policy controls the QuickStart provisions, building a security and governance narrative for customer demos."
+      - title: "Private AI Coding Assistant — Deploy"
+        overview: "Participants deploy the Private AI Coding Assistant QuickStart in an air-gapped OpenShift configuration."
+      - title: "Private AI Coding Assistant — Air-Gapped Dev Workflow"
+        overview: "Participants use the deployed assistant to complete an AI-assisted coding task entirely within the air-gapped environment, preparing a customer-facing demo narrative."
+      - title: "QuickStart Family Recap & Next Steps"
+        overview: "A tour of the broader QuickStart family (name, description, use case, value prop, links) plus a call to action for using QuickStarts in customer engagements."
     rcars_overlap_pct: 46
     rcars_top_matches:
       - title: "Private Model as a Service - A Practical Guide to Red Hat AI"
