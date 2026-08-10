@@ -100,7 +100,7 @@ approval_checklist:
 
   content:
     prerequisites_verifiable: false
-    assessment_strategy: ""
+    assessment_strategy: "Trust-based — no automated solve/validate checks (classic Showroom lab). Participants complete each module's hands-on steps and can demo the resulting QuickStart deployments live."
     catalog_gap: ""
     design_overview: "This 90-minute lab equips intermediate Red Hat Solution Architects to sell OpenShift AI and related products using Red Hat QuickStarts. Participants learn what a QuickStart is, then deploy and explore two featured QuickStarts — Secure Agent Workspace (secure, governed AI agent environments) and Private AI Coding Assistant (air-gapped AI-assisted development) — before touring the broader QuickStart family and leaving with concrete next steps for customer engagements."
     module_summaries:

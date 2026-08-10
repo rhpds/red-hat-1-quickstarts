@@ -4,20 +4,67 @@
 # Review and approve this before automation code is written.
 #
 # See the automation manifest format guide for field reference.
+# DRAFT — generated during intake from spec.yaml + design.md. The automation
+# procedure will refine this during the development stage.
 
-# approach: ansible | gitops | both
+approach: gitops
 
-# infrastructure:
-#   type: ocp-cnv | ocp-aws | rhel-vms | sandbox-cluster | sandbox-tenant
-#   ocp_version: ""
-#   multi_user: false
-#   users_per_deployment: 1
+infrastructure:
+  type: sandbox-tenant
+  ocp_version: "4.21"
+  multi_user: true
+  users_per_deployment: 12
 
-# operators: []
-# applications: []
-# rbac: []
-# seed_data: []
-# network: []
-# broken_resources: []
-# provision_data: []
-# notes: ""
+operators:
+  - name: Red Hat OpenShift AI
+    channel: "TBD"
+    namespace: "TBD"
+    reason: "Environment must have Red Hat OpenShift AI 3.5 pre-installed; learners use it but do not install it themselves"
+    source_module: module-01-what-is-a-quickstart
+
+applications: []
+# The two featured QuickStarts (Secure Agent Workspace, Private AI Coding Assistant) are
+# deployed BY the learner as the hands-on exercise in Modules 2-5 — automation should not
+# pre-deploy them for the learner.
+
+rbac:
+  - type: namespace
+    name: "{{ user_namespace }}"
+    reason: "Per-tenant sandbox namespace (Sandbox API Cluster/Tenant model) isolating each SA's QuickStart deployments"
+
+seed_data:
+  - type: git-repo
+    name: secure-agent-workspace
+    url: https://github.com/validatedpatterns-sandbox/secure-agent-workspace
+    target: "{{ user_namespace }}"
+    reason: "Source repo the learner deploys from in Modules 2-3"
+    source_module: module-02-secure-agent-workspace-deploy-explore
+  - type: git-repo
+    name: private-coding-assistant
+    url: https://github.com/rh-ai-quickstart/private-coding-assistant
+    target: "{{ user_namespace }}"
+    reason: "Source repo the learner deploys from in Modules 4-5; must be pre-staged (mirrored images/models) to run air-gapped"
+    source_module: module-04-private-ai-coding-assistant-deploy
+
+broken_resources: []
+
+provision_data:
+  - key: quickstart_catalog_url
+    value: "TBD"
+    description: "Link to the Red Hat QuickStarts catalog shown in Module 1"
+
+notes: |
+  Both featured QuickStarts have their own upstream deploy automation (Helm/GitOps) that the
+  learner runs themselves as the hands-on exercise — automation's job is to pre-stage
+  prerequisites (registry/network access, base namespace, pre-staged models/images for the
+  air-gapped Private AI Coding Assistant scenario), not to deploy the QuickStarts for the learner.
+
+  Open question for the automation developer: design.md lists Red Hat Developer Playground MaaS
+  as an external service (model access/key/subscription), but Modules 4-5 (Private AI Coding
+  Assistant) are described as fully air-gapped with no external network dependency during the
+  student session. Confirm whether MaaS access is needed only during pre-event automation/staging
+  (to obtain model weights or entitlements) or also at runtime, and adjust external_services /
+  the air-gapped framing accordingly.
+
+  Both QuickStarts are still under active development ahead of RH1 (mid-January) — repo contents
+  may change before development starts.
