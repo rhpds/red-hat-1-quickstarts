@@ -19,7 +19,7 @@ project:
   workflow_id: "0cf1f398-b9a0-4c2b-b954-fdde5d00a9a6"
 
 spec:
-  title: ""
+  title: "Selling with Red Hat QuickStarts: A Hands-On Tour for Solution Architects"
   learning_objectives: []
   modules: []              # [{id, title, duration_min}] — written by intake Phase 4; id is stable (e.g. module-01)
   environment:
@@ -54,8 +54,8 @@ spec:
     external_services: []              # named external service dependencies e.g. [github.com]
     gpu_nodes: 0                       # number of GPU nodes (0 = none)
     gpu_type: ""                       # e.g. NVIDIA A100 40GB (required if gpu_nodes > 0)
-  duration_hours: null
-  audience: ""               # beginner | intermediate | advanced
+  duration_hours: 1.5
+  audience: "intermediate"               # beginner | intermediate | advanced
 
 compliance:
   last_hard_check: null
