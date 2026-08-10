@@ -1,0 +1,37 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: red-hat-1-quickstarts
+  title: red-hat-1-quickstarts
+  description: Hands-on Red Hat One lab using two new QuickStarts and an overview
+    of the other QuickStarts designed to enable SAs to use QuickStarts to sell
+    OpenShift AI and related products, and shorten the sales cycle. 70% on
+    understanding what a QuickStart is and how it works, and 30% of the time
+    articulating and enabling them to be used as a selling tool
+  annotations:
+    ph.rhdp.io/content-type: lab
+    ph.rhdp.io/deployment-mode: rhdp_published
+    ph.rhdp.io/github-user: tonykay
+    ph.rhdp.io/owner: ankay@redhat.com
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: rhpds/red-hat-1-quickstarts
+    ph.rhdp.io/created-at: 2026-08-10T18:11:54.348Z
+  tags:
+    - publishing-house
+    - lab
+    - rhdp-published
+  links:
+    - url: https://github.com/rhpds/red-hat-1-quickstarts
+      title: Repository
+      icon: github
+    - url: https://devspaces.apps.ocpv-infra02.wdc07.infra.demo.redhat.com#https://github.com/rhpds/red-hat-1-quickstarts
+      title: Open in DevSpaces
+      icon: catalog
+    - url: https://central-api-publishing-house.apps.ocpv-infra02.wdc07.infra.demo.redhat.com
+      title: Central
+      icon: dashboard
+spec:
+  type: content
+  lifecycle: experimental
+  owner: rhdp-team
+  system: publishing-house
