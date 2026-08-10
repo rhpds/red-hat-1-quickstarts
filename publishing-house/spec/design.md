@@ -40,8 +40,8 @@ Lab (hands-on)
 
 ## Products & Technologies
 
-- Red Hat OpenShift Container Platform
-- Red Hat OpenShift AI
+- Red Hat OpenShift Container Platform 4.21
+- Red Hat OpenShift AI 3.5
 - Red Hat QuickStarts — Secure Agent Workspace (https://github.com/validatedpatterns-sandbox/secure-agent-workspace)
 - Red Hat QuickStarts — Private AI Coding Assistant (https://github.com/rh-ai-quickstart/private-coding-assistant)
 
@@ -80,16 +80,16 @@ Intermediate
 
 ## Infrastructure Requirements
 
-- **Cloud provider:** TBD — confirmed in infrastructure phase
-- **Cluster type:** TBD — confirmed in infrastructure phase
-- **OCP version:** TBD — confirmed in infrastructure phase
-- **Topology:** TBD — confirmed in infrastructure phase
-- **Sizing:** TBD — confirmed in infrastructure phase
-- **Automation approach:** TBD — confirmed in infrastructure phase
-- **AI/MaaS:** TBD — confirmed in infrastructure phase
-- **External services:** TBD — confirmed in infrastructure phase
-- **AAP version:** TBD — confirmed in infrastructure phase
-- **Non-GA products:** TBD — confirmed in infrastructure phase
+- **Cloud provider:** CNV
+- **Cluster type:** Multinode (Sandbox API, Cluster/Tenant model — one shared cluster per event instance, each SA gets an isolated tenant namespace)
+- **OCP version:** 4.21
+- **Topology:** Shared-cluster — 12 concurrent tenants per cluster, 6–8 clusters planned for the RH1 event
+- **Sizing:** 3 control plane (16 vCPU, 64GB RAM each); 6 workers (16 vCPU, 64GB RAM, 200GB disk each) — estimate, to be validated by infra review
+- **Automation approach:** GitOps/Helm per each QuickStart's own upstream deploy process, orchestrated per tenant namespace
+- **AI/MaaS:** MaaS, open-source model tier (via Red Hat Developer Playground MaaS)
+- **External services:** github.com, quay.io, Red Hat Developer Playground MaaS (model access, API key, subscription)
+- **AAP version:** N/A — AAP not in products
+- **Non-GA products:** None flagged yet — both featured QuickStarts are still under active development ahead of RH1 (mid-January); will revisit closer to the event
 
 <!-- Not all fields must be known at intake. "TBD, estimating ~X" is fine. -->
 
