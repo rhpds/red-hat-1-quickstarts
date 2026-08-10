@@ -15,8 +15,8 @@ project:
   intake_type: "new"
   description: "Hands-on Red Hat One lab using two new QuickStarts and an overview of the other QuickStarts designed to enable SAs to use QuickStarts to sell OpenShift AI and related products, and shorten the sales cycle. 70% on understanding what a QuickStart is and how it works, and 30% of the time articulating and enabling them to be used as a selling tool"
   # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
-  jira_ticket: ""
-  workflow_id: ""
+  jira_ticket: "RHDPCD-858"
+  workflow_id: "0cf1f398-b9a0-4c2b-b954-fdde5d00a9a6"
 
 spec:
   title: ""
