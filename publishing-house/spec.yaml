@@ -104,8 +104,24 @@ approval_checklist:
     catalog_gap: ""
     design_overview: ""
     module_summaries: []
-    rcars_overlap_pct: null
-    rcars_top_matches: []
+    rcars_overlap_pct: 46
+    rcars_top_matches:
+      - title: "Private Model as a Service - A Practical Guide to Red Hat AI"
+        ci_name: "published.private-maas-v3.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=published.private-maas-v3.prod"
+        relevance_score: 46
+        why_it_fits: "Covers Red Hat OpenShift AI and OpenShift with hands-on AI-assisted coding and agentic AI workflows, but does not address the QuickStarts catalog, the specific QuickStart deployments, or sales positioning of the QuickStart family."
+      - title: "Parasol Insurance AI Workshop on ARO - MOBB"
+        ci_name: "azure-gpte.ocp-rhoai-aro-parasol-mobb.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=azure-gpte.ocp-rhoai-aro-parasol-mobb.prod"
+        relevance_score: 41
+        why_it_fits: "Covers Red Hat OpenShift AI and OpenShift hands-on, but focuses on LLM workflows, computer vision, and GitOps for an insurance scenario rather than the Secure Agent Workspace or Private AI Coding Assistant QuickStarts."
+      - title: "Taking MCP Servers to Production on OpenShift AI with the Red Hat MCP Registry"
+        ci_name: "published.openshift-mcp-lab.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=published.openshift-mcp-lab.prod"
+        relevance_score: 39
+        why_it_fits: "Covers OpenShift AI and AI agent governance/security controls on OpenShift, thematically adjacent to Secure Agent Workspace, but focused on MCP server deployment and registry governance rather than the QuickStart catalog or sales positioning."
+    catalog_gap: "No existing catalog item covers the Red Hat QuickStarts catalog itself, the Secure Agent Workspace or Private AI Coding Assistant QuickStarts specifically, air-gapped AI-assisted development, or positioning the QuickStart family for customer sales conversations. The closest matches only partially overlap on underlying OpenShift AI/agentic-AI themes."
     rejections: []
 
   infra:
