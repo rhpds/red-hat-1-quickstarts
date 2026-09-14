@@ -2,4 +2,23 @@
 # Human context, decisions, and notes that bridge sessions and people.
 # Not a task tracker — the manifest tracks structured progress.
 
-entries: []
+entries:
+  - id: "2026-09-14-001"
+    timestamp: "2026-09-14T22:23:47Z"
+    author: "tonykay"
+    status: open
+    type: note
+    content: >-
+      Updated intake form with new outline: redesigned the lab as a
+      sales-enablement flow instead of a deploy-focused flow. New module
+      structure — Module 1 intro/catalog tour (dealer's choice format),
+      Modules 2-4 use three pre-deployed AI Quickstarts (RAG, IT Self
+      Service, PPE Compliance Monitor) as customer demos rather than
+      deploying them, Module 5 is an optional stretch module to deploy a
+      QuickStart end-to-end (target QuickStart still TBD). Updated
+      spec.yaml, design.md, module outlines, automation-manifest.yaml, and
+      catalog-info.yaml accordingly. Pushed as commit 506f968. Open items:
+      (1) RCARS vetting results in spec.yaml are stale (scored against the
+      old Secure Agent Workspace / Private AI Coding Assistant content) and
+      need to be re-run before submission; (2) Module 5's target QuickStart
+      needs to be confirmed — author may pick a new one.
