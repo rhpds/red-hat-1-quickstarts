@@ -3,11 +3,11 @@ kind: Component
 metadata:
   name: red-hat-1-quickstarts
   title: red-hat-1-quickstarts
-  description: Hands-on Red Hat One lab using two new QuickStarts and an overview
-    of the other QuickStarts designed to enable SAs to use QuickStarts to sell OpenShift
-    AI and related products, and shorten the sales cycle. 70% on understanding what
-    a QuickStart is and how it works, and 30% of the time articulating and enabling
-    them to be used as a selling tool
+  description: Sales-centric Red Hat One lab that teaches Solution Architects how
+    to sell with AI Quickstarts. Covers what QuickStarts are and how to navigate
+    the catalog, then walks through using three pre-deployed AI Quickstarts (RAG,
+    IT Self Service, PPE Compliance Monitor) as customer-facing demos, with an
+    optional stretch module on deploying a QuickStart end-to-end.
   annotations:
     ph.rhdp.io/content-type: lab
     ph.rhdp.io/deployment-mode: rhdp_published

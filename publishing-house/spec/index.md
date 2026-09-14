@@ -4,8 +4,7 @@ Welcome to the project spec. Use the navigation to browse the design and module 
 
 - [Design Spec](design.md)
 - [Module 1 - What Is A Quickstart](modules/module-01-what-is-a-quickstart.md)
-- [Module 2 - Secure Agent Workspace Deploy Explore](modules/module-02-secure-agent-workspace-deploy-explore.md)
-- [Module 3 - Secure Agent Workspace Security Governance](modules/module-03-secure-agent-workspace-security-governance.md)
-- [Module 4 - Private Ai Coding Assistant Deploy](modules/module-04-private-ai-coding-assistant-deploy.md)
-- [Module 5 - Private Ai Coding Assistant Airgapped Workflow](modules/module-05-private-ai-coding-assistant-airgapped-workflow.md)
-- [Module 6 - Quickstart Family Recap Next Steps](modules/module-06-quickstart-family-recap-next-steps.md)
+- [Module 2 - AI Quickstart RAG - Selling The Demo](modules/module-02-rag-quickstart-selling-the-demo.md)
+- [Module 3 - AI Quickstart IT Self Service - Selling The Demo](modules/module-03-it-self-service-quickstart-selling-the-demo.md)
+- [Module 4 - AI Quickstart PPE Compliance Monitor - Selling The Demo](modules/module-04-ppe-compliance-monitor-quickstart-selling-the-demo.md)
+- [Module 5 (Optional/Stretch) - Deploy A Quickstart](modules/module-05-deploy-a-quickstart-optional.md)

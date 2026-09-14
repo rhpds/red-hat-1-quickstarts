@@ -13,7 +13,7 @@ project:
   initiative_key: "rh1_2027"
   showroom_type: "classic"
   intake_type: "new"
-  description: "Hands-on Red Hat One lab using two new QuickStarts and an overview of the other QuickStarts designed to enable SAs to use QuickStarts to sell OpenShift AI and related products, and shorten the sales cycle. 70% on understanding what a QuickStart is and how it works, and 30% of the time articulating and enabling them to be used as a selling tool"
+  description: "Sales-centric Red Hat One lab that teaches Solution Architects how to sell with AI Quickstarts. Covers what QuickStarts are and how to navigate the catalog, then walks through using three pre-deployed AI Quickstarts (RAG, IT Self Service, PPE Compliance Monitor) as customer-facing demos, with an optional stretch module on deploying a QuickStart end-to-end."
   # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
   jira_ticket: "RHDPCD-858"
   workflow_id: "0cf1f398-b9a0-4c2b-b954-fdde5d00a9a6"
@@ -22,35 +22,30 @@ spec:
   title: "Selling with Red Hat QuickStarts: A Hands-On Tour for Solution Architects"
   learning_objectives:
     - "Explore the Red Hat QuickStarts catalog and identify how QuickStarts accelerate customer proofs-of-concept"
-    - "Deploy the Secure Agent Workspace QuickStart to provision a governed, secure environment for AI agents on OpenShift"
-    - "Configure the security and governance controls (RBAC, network policy) built into the Secure Agent Workspace QuickStart"
-    - "Deploy the Private AI Coding Assistant QuickStart in an air-gapped OpenShift environment"
-    - "Demonstrate the Private AI Coding Assistant's air-gapped, in-cluster AI-assisted development workflow to a customer audience"
+    - "Demonstrate the AI Quickstart RAG to a customer audience using a pre-deployed instance"
+    - "Demonstrate the AI Quickstart IT Self Service to a customer audience using a pre-deployed instance"
+    - "Demonstrate the AI Quickstart PPE Compliance Monitor to a customer audience using a pre-deployed instance"
     - "Analyze the broader QuickStart family to match customer use cases to the right QuickStart in a sales conversation"
   modules:              # [{id, title, duration_min}] — id is stable (e.g. module-01)
     - id: module-01
       title: "Selling with Red Hat QuickStarts: What Is a QuickStart?"
-      duration_min: 10
+      duration_min: 15
       status: not_started
     - id: module-02
-      title: "Secure Agent Workspace — Deploy & Explore"
+      title: "AI Quickstart RAG — Selling the Demo"
       duration_min: 20
       status: not_started
     - id: module-03
-      title: "Secure Agent Workspace — Security & Governance Deep Dive"
+      title: "AI Quickstart IT Self Service — Selling the Demo"
       duration_min: 20
       status: not_started
     - id: module-04
-      title: "Private AI Coding Assistant — Deploy"
-      duration_min: 15
+      title: "AI Quickstart PPE Compliance Monitor — Selling the Demo"
+      duration_min: 20
       status: not_started
     - id: module-05
-      title: "Private AI Coding Assistant — Air-Gapped Dev Workflow"
-      duration_min: 15
-      status: not_started
-    - id: module-06
-      title: "QuickStart Family Recap & Next Steps"
-      duration_min: 10
+      title: "Deploy a QuickStart (Optional/Stretch)"
+      duration_min: 20
       status: not_started
   environment:
     platform: "ocp"               # ocp | rhel-vms — determines which sizing fields apply
@@ -84,7 +79,7 @@ spec:
     external_services: ["github.com", "quay.io", "Red Hat Developer Playground MaaS"]              # named external service dependencies e.g. [github.com]
     gpu_nodes: 0                       # number of GPU nodes (0 = none)
     gpu_type: ""                       # e.g. NVIDIA A100 40GB (required if gpu_nodes > 0)
-  duration_hours: 1.5
+  duration_hours: 1.25  # core modules 1-4 (75 min); module-05 is an optional stretch module not counted in core duration
   audience: "intermediate"               # beginner | intermediate | advanced
 
 compliance:
@@ -102,20 +97,18 @@ approval_checklist:
     prerequisites_verifiable: false
     assessment_strategy: "Trust-based — no automated solve/validate checks (classic Showroom lab). Participants complete each module's hands-on steps and can demo the resulting QuickStart deployments live."
     catalog_gap: ""
-    design_overview: "This 90-minute lab equips intermediate Red Hat Solution Architects to sell OpenShift AI and related products using Red Hat QuickStarts. Participants learn what a QuickStart is, then deploy and explore two featured QuickStarts — Secure Agent Workspace (secure, governed AI agent environments) and Private AI Coding Assistant (air-gapped AI-assisted development) — before touring the broader QuickStart family and leaving with concrete next steps for customer engagements."
+    design_overview: "This lab equips intermediate Red Hat Solution Architects to sell with AI Quickstarts. Participants learn what a QuickStart is and how to navigate the catalog to match customer use cases, then walk through three pre-deployed QuickStarts — AI Quickstart RAG, AI Quickstart IT Self Service, and AI Quickstart PPE Compliance Monitor — learning how to run and narrate each as a customer-facing demo. An optional stretch module covers deploying a QuickStart end-to-end for SAs with time remaining."
     module_summaries:
       - title: "Selling with Red Hat QuickStarts: What Is a QuickStart?"
-        overview: "Presentation-style introduction to what a Red Hat QuickStart is and how it accelerates customer proofs-of-concept, previewing the two QuickStarts covered hands-on later in the lab."
-      - title: "Secure Agent Workspace — Deploy & Explore"
-        overview: "Participants deploy the Secure Agent Workspace QuickStart onto their OpenShift cluster and explore the resulting environment."
-      - title: "Secure Agent Workspace — Security & Governance Deep Dive"
-        overview: "Participants inspect and configure the RBAC and network policy controls the QuickStart provisions, building a security and governance narrative for customer demos."
-      - title: "Private AI Coding Assistant — Deploy"
-        overview: "Participants deploy the Private AI Coding Assistant QuickStart in an air-gapped OpenShift configuration."
-      - title: "Private AI Coding Assistant — Air-Gapped Dev Workflow"
-        overview: "Participants use the deployed assistant to complete an AI-assisted coding task entirely within the air-gapped environment, preparing a customer-facing demo narrative."
-      - title: "QuickStart Family Recap & Next Steps"
-        overview: "A tour of the broader QuickStart family (name, description, use case, value prop, links) plus a call to action for using QuickStarts in customer engagements."
+        overview: "Presentation-style (dealer's choice format) introduction to what a Red Hat QuickStart is and the problem it solves, a guided tour of the QuickStarts catalog and how to match a QuickStart to a customer use case, and an optional walkthrough of how to demo one of the lab's featured QuickStarts to a customer."
+      - title: "AI Quickstart RAG — Selling the Demo"
+        overview: "Participants use an already-deployed AI Quickstart RAG instance, following a guide focused on running and narrating the demo rather than deploying it."
+      - title: "AI Quickstart IT Self Service — Selling the Demo"
+        overview: "Participants use an already-deployed AI Quickstart IT Self Service instance (speeding up ticket resolution). Built by the field from closer-to-real customer use cases, with existing talking points and demo material to draw on."
+      - title: "AI Quickstart PPE Compliance Monitor — Selling the Demo"
+        overview: "Participants use an already-deployed AI Quickstart PPE Compliance Monitor instance, following a guide focused on running and narrating the demo rather than deploying it."
+      - title: "Deploy a QuickStart (Optional/Stretch)"
+        overview: "Time-permitting stretch module where participants deploy a QuickStart end-to-end. Specific QuickStart TBD."
     rcars_overlap_pct: 46
     rcars_top_matches:
       - title: "Private Model as a Service - A Practical Guide to Red Hat AI"

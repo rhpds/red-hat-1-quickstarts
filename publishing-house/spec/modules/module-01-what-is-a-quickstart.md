@@ -2,42 +2,43 @@
 
 ### Brief Overview
 
-This module opens the lab with a short presentation-style introduction to Red Hat QuickStarts: what they are, how they work as a selling and demo mechanism, and how they fit into a Solution Architect's customer-facing toolkit. It orients participants to the pre-provisioned lab environment and previews the two QuickStarts (Secure Agent Workspace and Private AI Coding Assistant) they will deploy hands-on in later modules. There is no hands-on deployment in this module — it is framing and context-setting for the rest of the lab.
+This module opens the lab with a presentation-style introduction to Red Hat QuickStarts: what they are, the problem they solve for customers, and how they work as a selling and demo mechanism for Solution Architects. It gives participants a guided tour of the QuickStarts catalog and how to match a QuickStart to a customer use case, and optionally walks through how to demo one of the lab's three featured QuickStarts to a customer. There is no hands-on deployment in this module — it is framing and context-setting for the rest of the lab.
 
 ### Audience and Time
 
 - **Target personas:** Red Hat Solution Architects, Red Hat One attendees
 - **Prerequisites for this module:** Working familiarity with Red Hat OpenShift and Red Hat OpenShift AI fundamentals (console navigation, basic project/pod concepts); access to the pre-provisioned lab OpenShift environment
-- **Estimated duration:** 10 minutes (includes the lab's intro/presentation content)
+- **Estimated duration:** 15 minutes
 
 ### Learning Objectives
 
 - Explore the Red Hat QuickStarts catalog and identify how QuickStarts accelerate customer proofs-of-concept
-- Describe, at a mechanical level, how a QuickStart is packaged and deployed
-- Identify the two QuickStarts covered hands-on in this lab (Secure Agent Workspace, Private AI Coding Assistant) and the customer use case each addresses
+- Identify the problem a QuickStart solves for a customer and how it fits into a sales conversation
+- Match a customer use case to the right QuickStart in the catalog
+- Identify the three QuickStarts covered hands-on in this lab (AI Quickstart RAG, AI Quickstart IT Self Service, AI Quickstart PPE Compliance Monitor) and the customer use case each addresses
 
 ### Lab Structure
 
 | Section | Title | Duration |
 |---------|-------|----------|
-| 1 | Welcome and lab orientation | 3 min |
-| 2 | What is a Red Hat QuickStart? | 4 min |
-| 3 | Tour of the QuickStarts catalog and preview of this lab's two QuickStarts | 3 min |
+| 1 | What is a Red Hat QuickStart, and what problem does it solve? | 5 min |
+| 2 | Tour of the QuickStarts catalog — matching a QuickStart to a customer use case | 7 min |
+| 3 | (Optional) How to demo one of this lab's QuickStarts to a customer | 3 min |
 
 ### Detailed Steps
 
-1. Review the lab's goals and module flow, and confirm access to the pre-provisioned Red Hat OpenShift cluster with Red Hat OpenShift AI installed.
-2. Introduce the concept of a Red Hat QuickStart as a packaged, demo-ready proof-of-concept accelerator, and explain how QuickStarts shorten the sales cycle for customer-facing SAs.
-3. Browse the Red Hat QuickStarts catalog at a high level to see the range of available QuickStarts and how they are organized.
-4. Preview the two QuickStarts this lab covers hands-on — Secure Agent Workspace and Private AI Coding Assistant — and the customer scenarios each is meant to address.
-5. Confirm participants understand the module flow (Modules 2–3 for Secure Agent Workspace, Modules 4–5 for Private AI Coding Assistant, Module 6 for the family recap) before proceeding.
+1. Introduce the concept of a Red Hat QuickStart as a packaged, demo-ready proof-of-concept accelerator, and explain how QuickStarts shorten the sales cycle for customer-facing SAs.
+2. Browse the Red Hat QuickStarts catalog, showing how it's organized and how to filter/search for a QuickStart that fits a given customer scenario.
+3. Preview the three QuickStarts this lab covers hands-on — AI Quickstart RAG, AI Quickstart IT Self Service, and AI Quickstart PPE Compliance Monitor — and the customer scenario each addresses.
+4. (Optional) Pick one of the three featured QuickStarts and walk through how you would demo it to a customer — framing, talking points, and what to highlight.
+5. Confirm participants understand the module flow (Modules 2–4 for the three QuickStarts, Module 5 optional deploy) before proceeding.
 
 ### Key Takeaways
 
 - A Red Hat QuickStart is a packaged, repeatable way to stand up a customer-relevant proof-of-concept quickly
 - QuickStarts are a mechanism for shortening the sales cycle by giving customers a hands-on, credible demo rather than a slide deck
-- This lab's two featured QuickStarts map to distinct customer conversations: secure/governed AI agent environments, and private/air-gapped AI-assisted development
+- The QuickStarts catalog can be navigated to match a specific customer use case to the right QuickStart
 
 ### Infrastructure Notes
 
-Requires the pre-provisioned Red Hat OpenShift cluster with Red Hat OpenShift AI installed and base namespaces/projects created ahead of the session, per the design spec's automation requirements. No additional module-specific infrastructure.
+Requires the pre-provisioned Red Hat OpenShift cluster with Red Hat OpenShift AI installed, and the three featured QuickStarts (AI Quickstart RAG, IT Self Service, PPE Compliance Monitor) already deployed per tenant namespace via GitOps ahead of the session. No additional module-specific infrastructure.

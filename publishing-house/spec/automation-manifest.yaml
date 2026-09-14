@@ -23,28 +23,35 @@ operators:
     source_module: module-01-what-is-a-quickstart
 
 applications: []
-# The two featured QuickStarts (Secure Agent Workspace, Private AI Coding Assistant) are
-# deployed BY the learner as the hands-on exercise in Modules 2-5 — automation should not
-# pre-deploy them for the learner.
+# The three featured QuickStarts (AI Quickstart RAG, IT Self Service, PPE Compliance Monitor)
+# must be PRE-DEPLOYED into each tenant namespace ahead of the session — learners only USE
+# them in Modules 2-4, they do not deploy anything. Author is building this GitOps automation
+# separately; repo/chart references below are placeholders pending that work.
 
 rbac:
   - type: namespace
     name: "{{ user_namespace }}"
-    reason: "Per-tenant sandbox namespace (Sandbox API Cluster/Tenant model) isolating each SA's QuickStart deployments"
+    reason: "Per-tenant sandbox namespace (Sandbox API Cluster/Tenant model) isolating each SA's pre-deployed QuickStarts"
 
 seed_data:
   - type: git-repo
-    name: secure-agent-workspace
-    url: https://github.com/validatedpatterns-sandbox/secure-agent-workspace
+    name: ai-qs-rag
+    url: "TBD"
     target: "{{ user_namespace }}"
-    reason: "Source repo the learner deploys from in Modules 2-3"
-    source_module: module-02-secure-agent-workspace-deploy-explore
+    reason: "AI Quickstart RAG — must be pre-deployed and running before the session; learner only uses it in Module 2"
+    source_module: module-02-rag-quickstart-selling-the-demo
   - type: git-repo
-    name: private-coding-assistant
-    url: https://github.com/rh-ai-quickstart/private-coding-assistant
+    name: ai-qs-it-self-service
+    url: "TBD"
     target: "{{ user_namespace }}"
-    reason: "Source repo the learner deploys from in Modules 4-5; must be pre-staged (mirrored images/models) to run air-gapped"
-    source_module: module-04-private-ai-coding-assistant-deploy
+    reason: "AI Quickstart IT Self Service — must be pre-deployed and running before the session; learner only uses it in Module 3"
+    source_module: module-03-it-self-service-quickstart-selling-the-demo
+  - type: git-repo
+    name: ai-qs-ppe-comp
+    url: "TBD"
+    target: "{{ user_namespace }}"
+    reason: "AI Quickstart PPE Compliance Monitor — must be pre-deployed and running before the session; learner only uses it in Module 4"
+    source_module: module-04-ppe-compliance-monitor-quickstart-selling-the-demo
 
 broken_resources: []
 
@@ -54,17 +61,16 @@ provision_data:
     description: "Link to the Red Hat QuickStarts catalog shown in Module 1"
 
 notes: |
-  Both featured QuickStarts have their own upstream deploy automation (Helm/GitOps) that the
-  learner runs themselves as the hands-on exercise — automation's job is to pre-stage
-  prerequisites (registry/network access, base namespace, pre-staged models/images for the
-  air-gapped Private AI Coding Assistant scenario), not to deploy the QuickStarts for the learner.
+  Lab flow changed to sales-enablement: learners USE three pre-deployed QuickStarts (AI
+  Quickstart RAG, IT Self Service, PPE Compliance Monitor) rather than deploying them. All
+  three must be up and running in each tenant namespace before the session starts.
 
-  Open question for the automation developer: design.md lists Red Hat Developer Playground MaaS
-  as an external service (model access/key/subscription), but Modules 4-5 (Private AI Coding
-  Assistant) are described as fully air-gapped with no external network dependency during the
-  student session. Confirm whether MaaS access is needed only during pre-event automation/staging
-  (to obtain model weights or entitlements) or also at runtime, and adjust external_services /
-  the air-gapped framing accordingly.
+  Author is building this GitOps automation separately (per-tenant pre-deploy of all three
+  QuickStarts) — this manifest documents the requirement; repo/chart URLs above are
+  placeholders pending that work.
 
-  Both QuickStarts are still under active development ahead of RH1 (mid-January) — repo contents
+  Module 5 is an optional stretch module (deploy a QuickStart end-to-end) — target QuickStart
+  is still TBD, so no automation requirement is defined for it yet.
+
+  All three QuickStarts are moving to production as of this revision — repo/chart references
   may change before development starts.
