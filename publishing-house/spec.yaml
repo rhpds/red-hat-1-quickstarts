@@ -90,10 +90,11 @@ approval_checklist:
       \ Showroom lab). Participants complete each module's hands-on steps and can\
       \ demo the resulting QuickStart deployments live."
     catalog_gap: No existing catalog item covers the Red Hat QuickStarts catalog itself,
-      the Secure Agent Workspace or Private AI Coding Assistant QuickStarts specifically,
-      air-gapped AI-assisted development, or positioning the QuickStart family for
-      customer sales conversations. The closest matches only partially overlap on
-      underlying OpenShift AI/agentic-AI themes.
+      the specific AI Quickstart RAG, IT Self Service, and PPE Compliance Monitor
+      QuickStarts together, or positioning the QuickStart family for customer sales
+      conversations. The closest match (80% relevance) only covers a RAG demo narrative
+      and does not address the other two QuickStarts, catalog navigation, or sales
+      positioning.
     design_overview: "This lab equips intermediate Red Hat Solution Architects to\
       \ sell with AI Quickstarts. Participants learn what a QuickStart is and how\
       \ to navigate the catalog to match customer use cases, then walk through three\
@@ -122,32 +123,30 @@ approval_checklist:
     - title: Deploy a QuickStart (Optional/Stretch)
       overview: Time-permitting stretch module where participants deploy a QuickStart
         end-to-end. Specific QuickStart TBD.
-    rcars_overlap_pct: 46
+    rcars_overlap_pct: 80
     rcars_top_matches:
-    - title: Private Model as a Service - A Practical Guide to Red Hat AI
-      ci_name: published.private-maas-v3.prod
-      url: https://catalog.demo.redhat.com/catalog?item=published.private-maas-v3.prod
-      relevance_score: 46
-      why_it_fits: Covers Red Hat OpenShift AI and OpenShift with hands-on AI-assisted
-        coding and agentic AI workflows, but does not address the QuickStarts catalog,
-        the specific QuickStart deployments, or sales positioning of the QuickStart
-        family.
-    - title: Parasol Insurance AI Workshop on ARO - MOBB
-      ci_name: azure-gpte.ocp-rhoai-aro-parasol-mobb.prod
-      url: https://catalog.demo.redhat.com/catalog?item=azure-gpte.ocp-rhoai-aro-parasol-mobb.prod
-      relevance_score: 41
-      why_it_fits: Covers Red Hat OpenShift AI and OpenShift hands-on, but focuses
-        on LLM workflows, computer vision, and GitOps for an insurance scenario rather
-        than the Secure Agent Workspace or Private AI Coding Assistant QuickStarts.
-    - title: Taking MCP Servers to Production on OpenShift AI with the Red Hat MCP
-        Registry
-      ci_name: published.openshift-mcp-lab.prod
-      url: https://catalog.demo.redhat.com/catalog?item=published.openshift-mcp-lab.prod
-      relevance_score: 39
-      why_it_fits: Covers OpenShift AI and AI agent governance/security controls on
-        OpenShift, thematically adjacent to Secure Agent Workspace, but focused on
-        MCP server deployment and registry governance rather than the QuickStart catalog
-        or sales positioning.
+    - title: Generative AI Demo with Red Hat Openshift AI
+      ci_name: sandboxes-gpte.ocp-demo-gen-ai.prod
+      url: https://catalog.demo.redhat.com/catalog?item=sandboxes-gpte.ocp-demo-gen-ai.prod
+      relevance_score: 80
+      why_it_fits: Covers a sales-oriented RAG demo on Red Hat OpenShift AI, closely
+        aligned with the AI Quickstart RAG module, but does not cover the IT Self
+        Service or PPE Compliance Monitor Quickstarts or QuickStarts catalog navigation.
+    - title: Generative AI Demo with Red Hat Openshift AI (CNV Pools)
+      ci_name: agd-v2.ocp-demo-gen-ai-cnv.prod
+      url: https://catalog.demo.redhat.com/catalog?item=agd-v2.ocp-demo-gen-ai-cnv.prod
+      relevance_score: 77
+      why_it_fits: Covers the same RAG demo narrative as above on CNV pools, but likewise
+        does not cover the IT Self Service or PPE Compliance Monitor Quickstarts or
+        catalog navigation/sales positioning.
+    - title: OpenShift Advanced App Platform Demo
+      ci_name: published.ocp4-adv-app-platform-demo.prod
+      url: https://catalog.demo.redhat.com/catalog?item=published.ocp4-adv-app-platform-demo.prod
+      relevance_score: 56
+      why_it_fits: Covers OpenShift and OpenShift AI as part of a broad platform demo,
+        but focuses on the general application platform lifecycle rather than the
+        AI Quickstarts catalog or positioning/demoing those specific QuickStarts in
+        a sales conversation.
     rejections:
     - id: 995c55e8-7b5d-4270-ad49-dd6cb00359d1
       text: I provided Tony some feedback in Slack on some better QuickStart selections
