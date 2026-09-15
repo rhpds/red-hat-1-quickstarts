@@ -4,7 +4,7 @@ Welcome to the project spec. Use the navigation to browse the design and module 
 
 - [Design Spec](design.md)
 - [Module 1 - What Is A Quickstart](modules/module-01-what-is-a-quickstart.md)
-- [Module 2 - AI Quickstart RAG - Selling The Demo](modules/module-02-rag-quickstart-selling-the-demo.md)
-- [Module 3 - AI Quickstart IT Self Service - Selling The Demo](modules/module-03-it-self-service-quickstart-selling-the-demo.md)
-- [Module 4 - AI Quickstart PPE Compliance Monitor - Selling The Demo](modules/module-04-ppe-compliance-monitor-quickstart-selling-the-demo.md)
-- [Module 5 (Optional/Stretch) - Deploy A Quickstart](modules/module-05-deploy-a-quickstart-optional.md)
+- [Module 2 - Rag Quickstart Selling The Demo](modules/module-02-rag-quickstart-selling-the-demo.md)
+- [Module 3 - It Self Service Quickstart Selling The Demo](modules/module-03-it-self-service-quickstart-selling-the-demo.md)
+- [Module 4 - Ppe Compliance Monitor Quickstart Selling The Demo](modules/module-04-ppe-compliance-monitor-quickstart-selling-the-demo.md)
+- [Module 5 - Deploy A Quickstart Optional](modules/module-05-deploy-a-quickstart-optional.md)
