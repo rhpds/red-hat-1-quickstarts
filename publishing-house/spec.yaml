@@ -1,140 +1,167 @@
-# Publishing House — Project Spec
-# Lifecycle: intake → content_review → infra_review → jira_sync → development → ready → published
-# No secrets in this file. Tokens live in ~/.config/publishing-house/auth.json
-# Stage is managed by SonataFlow and cached in .ph-state — do not edit stage.current manually.
-# NOTE: This file is also in the template repo. The Scaffolder overlays project.* values.
-# TODO: Eliminate this copy — Scaffolder should pull from template repo directly.
-
 project:
-  slug: "red-hat-1-quickstarts"
-  owner_email: "ankay@redhat.com"
-  content_type: "lab"
-  deployment_mode: "rhdp_published"
-  initiative_key: "rh1_2027"
-  showroom_type: "classic"
-  intake_type: "new"
-  description: "Sales-centric Red Hat One lab that teaches Solution Architects how to sell with AI Quickstarts. Covers what QuickStarts are and how to navigate the catalog, then walks through using three pre-deployed AI Quickstarts (RAG, IT Self Service, PPE Compliance Monitor) as customer-facing demos, with an optional stretch module on deploying a QuickStart end-to-end."
-  # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
-  jira_ticket: "RHDPCD-858"
-  workflow_id: "0cf1f398-b9a0-4c2b-b954-fdde5d00a9a6"
-
+  slug: red-hat-1-quickstarts
+  owner_email: ankay@redhat.com
+  content_type: lab
+  deployment_mode: rhdp_published
+  initiative_key: rh1_2027
+  showroom_type: classic
+  intake_type: new
+  description: Sales-centric Red Hat One lab that teaches Solution Architects how
+    to sell with AI Quickstarts. Covers what QuickStarts are and how to navigate the
+    catalog, then walks through using three pre-deployed AI Quickstarts (RAG, IT Self
+    Service, PPE Compliance Monitor) as customer-facing demos, with an optional stretch
+    module on deploying a QuickStart end-to-end.
+  jira_ticket: RHDPCD-858
+  workflow_id: 0cf1f398-b9a0-4c2b-b954-fdde5d00a9a6
 spec:
-  title: "Selling with Red Hat QuickStarts: A Hands-On Tour for Solution Architects"
+  title: 'Selling with Red Hat QuickStarts: A Hands-On Tour for Solution Architects'
   learning_objectives:
-    - "Explore the Red Hat QuickStarts catalog and identify how QuickStarts accelerate customer proofs-of-concept"
-    - "Demonstrate the AI Quickstart RAG to a customer audience using a pre-deployed instance"
-    - "Demonstrate the AI Quickstart IT Self Service to a customer audience using a pre-deployed instance"
-    - "Demonstrate the AI Quickstart PPE Compliance Monitor to a customer audience using a pre-deployed instance"
-    - "Analyze the broader QuickStart family to match customer use cases to the right QuickStart in a sales conversation"
-  modules:              # [{id, title, duration_min}] — id is stable (e.g. module-01)
-    - id: module-01
-      title: "Selling with Red Hat QuickStarts: What Is a QuickStart?"
-      duration_min: 15
-      status: not_started
-    - id: module-02
-      title: "AI Quickstart RAG — Selling the Demo"
-      duration_min: 20
-      status: not_started
-    - id: module-03
-      title: "AI Quickstart IT Self Service — Selling the Demo"
-      duration_min: 20
-      status: not_started
-    - id: module-04
-      title: "AI Quickstart PPE Compliance Monitor — Selling the Demo"
-      duration_min: 20
-      status: not_started
-    - id: module-05
-      title: "Deploy a QuickStart (Optional/Stretch)"
-      duration_min: 20
-      status: not_started
+  - Explore the Red Hat QuickStarts catalog and identify how QuickStarts accelerate
+    customer proofs-of-concept
+  - Demonstrate the AI Quickstart RAG to a customer audience using a pre-deployed
+    instance
+  - Demonstrate the AI Quickstart IT Self Service to a customer audience using a pre-deployed
+    instance
+  - Demonstrate the AI Quickstart PPE Compliance Monitor to a customer audience using
+    a pre-deployed instance
+  - Analyze the broader QuickStart family to match customer use cases to the right
+    QuickStart in a sales conversation
+  modules:
+  - id: module-01
+    title: 'Selling with Red Hat QuickStarts: What Is a QuickStart?'
+    duration_min: 15
+    status: not_started
+  - id: module-02
+    title: "AI Quickstart RAG \u2014 Selling the Demo"
+    duration_min: 20
+    status: not_started
+  - id: module-03
+    title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
+    duration_min: 20
+    status: not_started
+  - id: module-04
+    title: "AI Quickstart PPE Compliance Monitor \u2014 Selling the Demo"
+    duration_min: 20
+    status: not_started
+  - id: module-05
+    title: Deploy a QuickStart (Optional/Stretch)
+    duration_min: 20
+    status: not_started
   environment:
-    platform: "ocp"               # ocp | rhel-vms — determines which sizing fields apply
-    topology: "shared-cluster"               # shared-cluster | per-student | cnv-pool
-    cloud_provider: cnv        # cnv | aws | troshka — cnv is default
-    max_concurrent_users: 12 # required if topology = shared-cluster — per cluster; 6-8 clusters planned for the RH1 event
-
-    # --- OCP-specific fields (only when platform = ocp) ---
-    ocp_version: "4.21"                    # e.g. 4.20 — minimum 4.20; leave empty for rhel-vms
-    cluster_type: "multinode"                   # sno | multinode — only for platform = ocp
-    control_plane_instance_count: 3 # 1 if sno, 3 if multinode
-    control_plane_cpu: 16            # 32 if sno, 16 if multinode
-    control_plane_ram_gb: 64         # 128 if sno, 64 if multinode
-    worker_count: 6                 # number of OCP worker nodes — estimate, TBD for infra review
-    worker_cpu: 16                # vCPU per worker
-    worker_ram_gb: 64                # RAM per worker in GB
-    worker_disk_gb: 200                # disk per worker in GB
-
-    # --- VM-specific fields (only when platform = rhel-vms) ---
-    # Each entry: {role, count, cpu, ram_gb, disk_gb, os}
+    platform: ocp
+    topology: shared-cluster
+    cloud_provider: cnv
+    max_concurrent_users: 12
+    ocp_version: '4.21'
+    cluster_type: multinode
+    control_plane_instance_count: 3
+    control_plane_cpu: 16
+    control_plane_ram_gb: 64
+    worker_count: 6
+    worker_cpu: 16
+    worker_ram_gb: 64
+    worker_disk_gb: 200
     vms_per_student: []
-
-    # --- Common fields (both platforms) ---
-    aap_version: ""                    # required if AAP in products
-    ai_requirement: "maas"                 # maas | gpu | none
-    ai_model_tier: "open-source"                 # open-source | frontier (if ai_requirement = maas or gpu)
-    ai_model_name: ""                  # specific model e.g. granite-3.1-8b
-    ai_justification: ""               # required if ai_model_tier = frontier or ai_requirement = gpu
-    non_ga_products: []                # list of non-GA products/versions
-    non_ga_access_plan: ""             # how access is provided for non-GA products
-    external_services: ["github.com", "quay.io", "Red Hat Developer Playground MaaS"]              # named external service dependencies e.g. [github.com]
-    gpu_nodes: 0                       # number of GPU nodes (0 = none)
-    gpu_type: ""                       # e.g. NVIDIA A100 40GB (required if gpu_nodes > 0)
-  duration_hours: 1.25  # core modules 1-4 (75 min); module-05 is an optional stretch module not counted in core duration
-  audience: "intermediate"               # beginner | intermediate | advanced
-
+    aap_version: ''
+    ai_requirement: maas
+    ai_model_tier: open-source
+    ai_model_name: ''
+    ai_justification: ''
+    non_ga_products: []
+    non_ga_access_plan: ''
+    external_services:
+    - github.com
+    - quay.io
+    - Red Hat Developer Playground MaaS
+    gpu_nodes: 0
+    gpu_type: ''
+  duration_hours: 1.25
+  audience: intermediate
 compliance:
   last_hard_check: null
   hard_result: null
-
 tracking:
   paused: false
   pause_reason: null
-
-# Approval checklist — filled collaboratively by author + skill + system + reviewers
 approval_checklist:
-
   content:
     prerequisites_verifiable: false
-    assessment_strategy: "Trust-based — no automated solve/validate checks (classic Showroom lab). Participants complete each module's hands-on steps and can demo the resulting QuickStart deployments live."
-    catalog_gap: ""
-    design_overview: "This lab equips intermediate Red Hat Solution Architects to sell with AI Quickstarts. Participants learn what a QuickStart is and how to navigate the catalog to match customer use cases, then walk through three pre-deployed QuickStarts — AI Quickstart RAG, AI Quickstart IT Self Service, and AI Quickstart PPE Compliance Monitor — learning how to run and narrate each as a customer-facing demo. An optional stretch module covers deploying a QuickStart end-to-end for SAs with time remaining."
+    assessment_strategy: "Trust-based \u2014 no automated solve/validate checks (classic\
+      \ Showroom lab). Participants complete each module's hands-on steps and can\
+      \ demo the resulting QuickStart deployments live."
+    catalog_gap: No existing catalog item covers the Red Hat QuickStarts catalog itself,
+      the Secure Agent Workspace or Private AI Coding Assistant QuickStarts specifically,
+      air-gapped AI-assisted development, or positioning the QuickStart family for
+      customer sales conversations. The closest matches only partially overlap on
+      underlying OpenShift AI/agentic-AI themes.
+    design_overview: "This lab equips intermediate Red Hat Solution Architects to\
+      \ sell with AI Quickstarts. Participants learn what a QuickStart is and how\
+      \ to navigate the catalog to match customer use cases, then walk through three\
+      \ pre-deployed QuickStarts \u2014 AI Quickstart RAG, AI Quickstart IT Self Service,\
+      \ and AI Quickstart PPE Compliance Monitor \u2014 learning how to run and narrate\
+      \ each as a customer-facing demo. An optional stretch module covers deploying\
+      \ a QuickStart end-to-end for SAs with time remaining."
     module_summaries:
-      - title: "Selling with Red Hat QuickStarts: What Is a QuickStart?"
-        overview: "Presentation-style (dealer's choice format) introduction to what a Red Hat QuickStart is and the problem it solves, a guided tour of the QuickStarts catalog and how to match a QuickStart to a customer use case, and an optional walkthrough of how to demo one of the lab's featured QuickStarts to a customer."
-      - title: "AI Quickstart RAG — Selling the Demo"
-        overview: "Participants use an already-deployed AI Quickstart RAG instance, following a guide focused on running and narrating the demo rather than deploying it."
-      - title: "AI Quickstart IT Self Service — Selling the Demo"
-        overview: "Participants use an already-deployed AI Quickstart IT Self Service instance (speeding up ticket resolution). Built by the field from closer-to-real customer use cases, with existing talking points and demo material to draw on."
-      - title: "AI Quickstart PPE Compliance Monitor — Selling the Demo"
-        overview: "Participants use an already-deployed AI Quickstart PPE Compliance Monitor instance, following a guide focused on running and narrating the demo rather than deploying it."
-      - title: "Deploy a QuickStart (Optional/Stretch)"
-        overview: "Time-permitting stretch module where participants deploy a QuickStart end-to-end. Specific QuickStart TBD."
+    - title: 'Selling with Red Hat QuickStarts: What Is a QuickStart?'
+      overview: Presentation-style (dealer's choice format) introduction to what a
+        Red Hat QuickStart is and the problem it solves, a guided tour of the QuickStarts
+        catalog and how to match a QuickStart to a customer use case, and an optional
+        walkthrough of how to demo one of the lab's featured QuickStarts to a customer.
+    - title: "AI Quickstart RAG \u2014 Selling the Demo"
+      overview: Participants use an already-deployed AI Quickstart RAG instance, following
+        a guide focused on running and narrating the demo rather than deploying it.
+    - title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
+      overview: Participants use an already-deployed AI Quickstart IT Self Service
+        instance (speeding up ticket resolution). Built by the field from closer-to-real
+        customer use cases, with existing talking points and demo material to draw
+        on.
+    - title: "AI Quickstart PPE Compliance Monitor \u2014 Selling the Demo"
+      overview: Participants use an already-deployed AI Quickstart PPE Compliance
+        Monitor instance, following a guide focused on running and narrating the demo
+        rather than deploying it.
+    - title: Deploy a QuickStart (Optional/Stretch)
+      overview: Time-permitting stretch module where participants deploy a QuickStart
+        end-to-end. Specific QuickStart TBD.
     rcars_overlap_pct: 46
     rcars_top_matches:
-      - title: "Private Model as a Service - A Practical Guide to Red Hat AI"
-        ci_name: "published.private-maas-v3.prod"
-        url: "https://catalog.demo.redhat.com/catalog?item=published.private-maas-v3.prod"
-        relevance_score: 46
-        why_it_fits: "Covers Red Hat OpenShift AI and OpenShift with hands-on AI-assisted coding and agentic AI workflows, but does not address the QuickStarts catalog, the specific QuickStart deployments, or sales positioning of the QuickStart family."
-      - title: "Parasol Insurance AI Workshop on ARO - MOBB"
-        ci_name: "azure-gpte.ocp-rhoai-aro-parasol-mobb.prod"
-        url: "https://catalog.demo.redhat.com/catalog?item=azure-gpte.ocp-rhoai-aro-parasol-mobb.prod"
-        relevance_score: 41
-        why_it_fits: "Covers Red Hat OpenShift AI and OpenShift hands-on, but focuses on LLM workflows, computer vision, and GitOps for an insurance scenario rather than the Secure Agent Workspace or Private AI Coding Assistant QuickStarts."
-      - title: "Taking MCP Servers to Production on OpenShift AI with the Red Hat MCP Registry"
-        ci_name: "published.openshift-mcp-lab.prod"
-        url: "https://catalog.demo.redhat.com/catalog?item=published.openshift-mcp-lab.prod"
-        relevance_score: 39
-        why_it_fits: "Covers OpenShift AI and AI agent governance/security controls on OpenShift, thematically adjacent to Secure Agent Workspace, but focused on MCP server deployment and registry governance rather than the QuickStart catalog or sales positioning."
-    catalog_gap: "No existing catalog item covers the Red Hat QuickStarts catalog itself, the Secure Agent Workspace or Private AI Coding Assistant QuickStarts specifically, air-gapped AI-assisted development, or positioning the QuickStart family for customer sales conversations. The closest matches only partially overlap on underlying OpenShift AI/agentic-AI themes."
-    rejections: []
-
+    - title: Private Model as a Service - A Practical Guide to Red Hat AI
+      ci_name: published.private-maas-v3.prod
+      url: https://catalog.demo.redhat.com/catalog?item=published.private-maas-v3.prod
+      relevance_score: 46
+      why_it_fits: Covers Red Hat OpenShift AI and OpenShift with hands-on AI-assisted
+        coding and agentic AI workflows, but does not address the QuickStarts catalog,
+        the specific QuickStart deployments, or sales positioning of the QuickStart
+        family.
+    - title: Parasol Insurance AI Workshop on ARO - MOBB
+      ci_name: azure-gpte.ocp-rhoai-aro-parasol-mobb.prod
+      url: https://catalog.demo.redhat.com/catalog?item=azure-gpte.ocp-rhoai-aro-parasol-mobb.prod
+      relevance_score: 41
+      why_it_fits: Covers Red Hat OpenShift AI and OpenShift hands-on, but focuses
+        on LLM workflows, computer vision, and GitOps for an insurance scenario rather
+        than the Secure Agent Workspace or Private AI Coding Assistant QuickStarts.
+    - title: Taking MCP Servers to Production on OpenShift AI with the Red Hat MCP
+        Registry
+      ci_name: published.openshift-mcp-lab.prod
+      url: https://catalog.demo.redhat.com/catalog?item=published.openshift-mcp-lab.prod
+      relevance_score: 39
+      why_it_fits: Covers OpenShift AI and AI agent governance/security controls on
+        OpenShift, thematically adjacent to Secure Agent Workspace, but focused on
+        MCP server deployment and registry governance rather than the QuickStart catalog
+        or sales positioning.
+    rejections:
+    - id: 995c55e8-7b5d-4270-ad49-dd6cb00359d1
+      text: I provided Tony some feedback in Slack on some better QuickStart selections
+        that are applicable to the audience we are targetting. RAG, speeding-up-ticket-resolution,
+        multimodal-compliance-montior. These are better more business focused topics
+        than what is in here right now. Especially for the general tech seller.
+      resolved: true
+      reviewer: nstephan@redhat.com
+      timestamp: '2026-08-27T15:27:23.969048+00:00'
   infra:
     peak_environments: null
-    cost_per_run_est: ""
-    provisioning_time_est: ""
-    agnosticv_base_ci: ""
-    approved_by: ""
+    cost_per_run_est: ''
+    provisioning_time_est: ''
+    agnosticv_base_ci: ''
+    approved_by: ''
     rejections: []
-
 showroom_content_status: not_started
