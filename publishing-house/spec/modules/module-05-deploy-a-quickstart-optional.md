@@ -16,7 +16,9 @@ This is an optional stretch module for participants with time remaining after Mo
 
 ### Lab Structure
 
-*(TBD — depends on which QuickStart is selected)*
+| Section | Title | Duration |
+|---------|-------|----------|
+| 1 | TBD — depends on which QuickStart is selected | 20 min |
 
 ### Detailed Steps
 

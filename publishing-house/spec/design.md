@@ -56,7 +56,7 @@ Lab (hands-on)
 | 3 | AI Quickstart IT Self Service — Selling the Demo | 20 min |
 | 4 | AI Quickstart PPE Compliance Monitor — Selling the Demo | 20 min |
 | — | **Total core** | **1.25 hours** |
-| 5 | Deploy a QuickStart (Optional/Stretch, QuickStart TBD) | 20 min, if time allows |
+| 5 | Deploy a QuickStart (Optional/Stretch) | 20 min, if time allows |
 
 <!-- Each module 10-30 min. Total: lab 1-4 hours, demo 15-45 min. Modules should build on each other. -->
 
