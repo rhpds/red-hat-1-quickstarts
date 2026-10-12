@@ -1,43 +1,55 @@
-# Module 4: AI Quickstart PPE Compliance Monitor — Selling the Demo
+# Module 5: AI Quickstart PPE Compliance Monitor — Selling the Demo
+
+> **Status: planned, not yet written.** Grounded on `rh-ai-quickstart/multimodal-compliance-monitor`.
+> Content will be adapted from the existing `rh-ai-qs-showroom/showroom-ai-quickstart-multimodal-monitor`
+> lab once the app is pre-deployed in the LB2142 tenant. See `docs/adr/0002-modules-4-5-grounding.md`.
 
 ### Brief Overview
 
-This module puts participants in front of an already-deployed AI Quickstart PPE Compliance Monitor instance. Participants use the pre-deployed instance and learn how to narrate its multimodal compliance-monitoring workflow as a customer-facing demo.
+Participants demo an already-deployed multimodal PPE compliance monitor: a React dashboard
+streaming video with live object-detection overlays, plus a chat pane for natural-language
+questions about what the camera sees. This is the most *visual* demo in the lab — bounding
+boxes on a safety video land instantly with a customer. A strong adapt-from-showroom
+candidate (the upstream lab already exists) and it runs **GPU-free**.
 
 ### Audience and Time
 
 - **Target personas:** Red Hat Solution Architects, Red Hat One attendees
-- **Prerequisites for this module:** Module 1 (what a QuickStart is, catalog navigation); access to the pre-deployed AI Quickstart PPE Compliance Monitor instance in the tenant namespace
+- **Prerequisites for this module:** Module 1 (what a QuickStart is); access to the pre-deployed PPE monitor via its Showroom tab
 - **Estimated duration:** 20 minutes
 
 ### Learning Objectives
 
-- Demonstrate the AI Quickstart PPE Compliance Monitor to a customer audience using a pre-deployed instance
-- Identify the customer use case and value proposition the PPE Compliance Monitor QuickStart addresses
-- Articulate the key talking points and moments to highlight when demoing this QuickStart to a customer
+- Run the pre-deployed PPE Compliance Monitor dashboard as a customer demo
+- Narrate live object detection (bounding boxes on the safety video) as the visual hook
+- Use the chat pane to ask about what the camera sees (e.g. people without hard hats)
+- Position the workplace-safety / operational-compliance value and tie it back to Red Hat OpenShift AI
 
 ### Lab Structure
 
 | Section | Title | Duration |
 |---------|-------|----------|
-| 1 | Orientation to the pre-deployed AI Quickstart PPE Compliance Monitor environment | 5 min |
-| 2 | Walk through the compliance-monitoring workflow end-to-end | 10 min |
-| 3 | Customer demo framing — talking points and what to highlight | 5 min |
+| 1 | The customer story: real-time, proactive safety monitoring | 4 min |
+| 2 | Watch it detect: the dashboard and live bounding boxes | 8 min |
+| 3 | Ask it questions: multimodal chat over the video | 4 min |
+| 4 | The sales narrative and OpenShift AI tie-back | 4 min |
 
 ### Detailed Steps
 
-1. Confirm access to the pre-deployed AI Quickstart PPE Compliance Monitor instance in the participant's tenant namespace.
-2. Tour the deployed environment (UI/console, key components) without redeploying anything.
-3. Run through the compliance-monitoring workflow as a customer would experience it, observing how the QuickStart detects and reports on PPE compliance.
-4. Identify the customer use case this QuickStart solves and the value proposition an SA would lead with.
-5. Practice narrating the demo — what to show first, what questions customers typically ask, and how to tie it back to OpenShift AI.
+1. Frame the business problem: manual safety monitoring is reactive and misses events; this QuickStart watches continuously and flags PPE/compliance issues in real time.
+2. Open the dashboard tab. The seeded rooftop PPE video auto-streams with live bounding-box overlays and real-time safety summaries — no setup, no video to supply (ships with the app).
+3. Narrate the detection: point out the overlays tracking people/PPE, and the running summary. This is the visual "wow."
+4. Use the chat pane to ask about the scene (e.g. "how many people without hard hats?") — the multimodal + conversational insight beat; answered via the remote MaaS LLM.
+5. Deliver the sales narrative: proactive vs reactive safety, manufacturing/facilities use cases; close on Red Hat OpenShift AI as the platform that runs vision + LLM together on the customer's own feeds.
+
+**Cut from the upstream lab:** the `02-accessing-the-cluster` plumbing, the `06-train-a-yolo-model` (Label Studio / training) depth, and most of `04/05` add-source/scenario-switching — keep only what sells. Mirror how RAG cut the Kubeflow page.
 
 ### Key Takeaways
 
-- The AI Quickstart PPE Compliance Monitor demonstrates a multimodal AI workflow applied to a concrete safety/compliance use case
-- Running the demo well is about narration and framing, not deployment steps
-- Talking points connect the technical demo to the customer's business problem
+- Live bounding boxes on a safety video are the most immediate visual hook in the lab
+- Multimodal + conversational: the system both *sees* and *answers questions about* what it sees
+- Proactive, continuous monitoring is the value; it runs on Red Hat OpenShift AI on the customer's own feeds
 
 ### Infrastructure Notes
 
-Requires the AI Quickstart PPE Compliance Monitor pre-deployed per tenant namespace via GitOps ahead of the session. No deployment steps performed by participants.
+Pre-deployed per tenant via **GitOps/Helm on the OpenVINO (CPU) profile** (`make deploy-openvino`) — **required** because the spec has `gpu_nodes: 0`; the chart defaults to KServe/GPU and must be overridden. Ships its own sample PPE video + detection models (streamed in-cluster via MediaMTX), so no external feeds needed. Detection runs on CPU (OVMS, ~5–8 CPU / 10–16Gi); chat uses the remote MaaS LLM. Own namespace, separate from RAG and IT Self Service. Reached via a dedicated Showroom tab (dashboard Route). No deployment or `oc` steps performed by participants.

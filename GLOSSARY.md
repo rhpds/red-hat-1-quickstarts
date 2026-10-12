@@ -55,7 +55,23 @@ log in to reach the app.
 
 ### AI Quickstart IT Self Service
 
-Module 4's (deferred) featured QuickStart — **term identity unresolved.** The name maps to
-two upstream repos: `it-self-service-agent` (Slack/email/ServiceNow "laptop refresh") and
-`speeding-up-ticket-resolution` (Zammad ticket portal). Reviewer feedback named the latter;
-pending author clarification. Do not treat as settled.
+Module 4's featured QuickStart — **resolved to `rh-ai-quickstart/it-self-service-agent`**
+(the laptop-refresh self-service agent). The agent "meets employees where they are"; in the
+lab the demo surface is an email test inbox. Chosen over the related
+`speeding-up-ticket-resolution` (a Zammad superset that embeds this agent as a submodule)
+because a Showroom lab and an AgnosticV tenant already exist for it — accepted despite a
+weaker webmail demo surface. See [[ppe-compliance-monitor]] and ADR 0002.
+
+### MakeOps
+
+Informal name for the `quickstart_deploy_via_make` deployment path: an AgnosticV workload
+that deploys a QuickStart by running its upstream `make` targets (Helm under the hood),
+as opposed to GitOps/ArgoCD. The IT Self Service QuickStart deploys via MakeOps; RAG
+deploys via GitOps. Both coexist in the LB2142 tenant, each in its own namespace.
+
+### PPE Compliance Monitor
+
+Module 5's featured QuickStart (`rh-ai-quickstart/multimodal-compliance-monitor`): a
+multimodal monitor that runs computer-vision object detection on a video feed (live
+bounding-box overlays) alongside an LLM chat pane answering questions about the scene. Runs
+GPU-free on the OpenVINO/CPU serving profile.

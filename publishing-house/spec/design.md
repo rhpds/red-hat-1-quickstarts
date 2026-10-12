@@ -59,11 +59,14 @@ Lab (hands-on)
 | 5 | AI Quickstart PPE Compliance Monitor — Selling the Demo (deferred) | 20 min |
 | 6 | Deploy a QuickStart (Optional/Stretch, deferred) | 20 min, if time allows |
 
-> **Scope note:** The flagship RAG QuickStart now spans two modules (2–3), adapted
-> from the upstream `showroom-ai-quickstart-rag` lab and re-slanted toward sales
-> value. Module 1 is a placeholder to flesh out once the RAG content is complete.
-> Modules 4–6 are deferred until the RAG flagship is done. See
-> `docs/adr/0001-rag-spans-two-modules.md`.
+> **Scope note:** The flagship RAG QuickStart spans two modules (2–3), adapted from
+> the upstream `showroom-ai-quickstart-rag` lab and re-slanted toward sales value.
+> Module 1 is a placeholder to flesh out once the hands-on content is complete.
+> Modules 4 (IT Self Service, grounded on `it-self-service-agent`) and 5 (PPE
+> Compliance Monitor, grounded on `multimodal-compliance-monitor`) are planned and
+> outlined but not yet written — `.adoc` content waits until each app is pre-deployed
+> in the LB2142 tenant. Module 6 (Deploy) remains deferred. See
+> `docs/adr/0001-rag-spans-two-modules.md` and `docs/adr/0002-modules-4-5-grounding.md`.
 
 <!-- Each module 10-30 min. Total: lab 1-4 hours, demo 15-45 min. Modules should build on each other. -->
 

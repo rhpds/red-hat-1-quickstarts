@@ -125,14 +125,18 @@ approval_checklist:
         calls vs stale training data), then practice the customer sales narrative and
         talking points that tie the demo back to Red Hat OpenShift AI.
     - title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
-      overview: Participants use an already-deployed AI Quickstart IT Self Service
-        instance (speeding up ticket resolution). Built by the field from closer-to-real
-        customer use cases, with existing talking points and demo material to draw
-        on.
+      overview: "Planned (not yet written). Grounded on rh-ai-quickstart/it-self-service-agent
+        (laptop-refresh self-service agent), adapting the existing rhpds/showroom-ai-quickstart-it-self-service-agent
+        lab and its ai-qs-it-self-service-tenant AgnosticV tenant. Demo runs over a
+        test-email (Greenmail) Webmail tab; must be pre-warmed and tightly scripted
+        to hide 10\u201330s LLM latency, with the oc/pods page cut. Chosen over
+        speeding-up-ticket-resolution for existing assets despite a weaker demo surface."
     - title: "AI Quickstart PPE Compliance Monitor \u2014 Selling the Demo"
-      overview: Participants use an already-deployed AI Quickstart PPE Compliance
-        Monitor instance, following a guide focused on running and narrating the demo
-        rather than deploying it.
+      overview: "Planned (not yet written). Grounded on rh-ai-quickstart/multimodal-compliance-monitor,
+        adapting the existing rh-ai-qs-showroom/showroom-ai-quickstart-multimodal-monitor
+        lab. The most visual demo in the lab (live bounding-box detection on a seeded
+        safety video + multimodal chat). Runs GPU-free on the OpenVINO/CPU profile
+        (make deploy-openvino) per gpu_nodes:0; ships its own sample video/models."
     - title: Deploy a QuickStart (Optional/Stretch)
       overview: Time-permitting stretch module where participants deploy a QuickStart
         end-to-end. Specific QuickStart TBD.
