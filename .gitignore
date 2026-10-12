@@ -1,3 +1,6 @@
 # Antora build output
 www/
 .cache/
+.agents/
+.claude/skills/
+.pi/
