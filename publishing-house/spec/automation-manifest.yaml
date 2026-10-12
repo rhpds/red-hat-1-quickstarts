@@ -17,8 +17,8 @@ infrastructure:
 
 operators:
   - name: Red Hat OpenShift AI
-    channel: "TBD"
-    namespace: "TBD"
+    channel: "stable-3.4"   # moved from stable-2.25; proven with RAG in ai-qs-rag-cluster. 3.x = KServe RawDeployment, ModelMesh removed, Gateway-API dashboard
+    namespace: "redhat-ods-operator"
     reason: "Environment must have Red Hat OpenShift AI pre-installed; learners use it but do not install it themselves"
     source_module: module-01-what-is-a-quickstart
 
@@ -36,14 +36,14 @@ applications:
     status: deployed   # already in the LB2142 tenant common.yaml
 
   - name: AI Quickstart IT Self Service
-    deploy: makeops   # quickstart_deploy_via_make, INSTALL_MODE=demo
+    deploy: makeops   # quickstart_deploy_via_make, INSTALL_MODE=demo, pinned v0.0.13
     repo: rh-ai-quickstart/it-self-service-agent
     namespace: "user-{{ guid }}-it-selfsvc"
     showroom_tab: "Webmail"
-    model: "llama-scout-17b (via MaaS/LiteLLM) — the extra model to add alongside RAG's"
+    model: "llama-scout-17b (via MaaS/LiteLLM) — SHARED with RAG (same model + virtual key, not a second model)"
     mode: "demo/mock (mock-eventing, mock-ServiceNow, Greenmail) — no Knative/Kafka"
     source_module: module-04-it-self-service-quickstart-selling-the-demo
-    status: tenant-exists   # ai-qs-it-self-service-tenant exists; must be merged into LB2142
+    status: deployed   # merged into LB2142 tenant common.yaml on ci/rh1-2027-lb2142-test-yamls (see ADR 0003)
 
   - name: AI Quickstart PPE Compliance Monitor
     deploy: gitops   # Helm, OpenVINO/CPU profile (make deploy-openvino)
