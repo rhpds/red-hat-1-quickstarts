@@ -4,10 +4,10 @@
 # Review and approve this before automation code is written.
 #
 # See the automation manifest format guide for field reference.
-# DRAFT — generated during intake from spec.yaml + design.md. The automation
-# procedure will refine this during the development stage.
+# Updated during development planning: multi-QuickStart tenant (LB2142), mixed
+# deploy mechanisms. See docs/adr/0002-modules-4-5-grounding.md.
 
-approach: gitops
+approach: mixed   # GitOps for RAG and PPE; MakeOps (make targets) for IT Self Service
 
 infrastructure:
   type: sandbox-tenant
@@ -19,58 +19,70 @@ operators:
   - name: Red Hat OpenShift AI
     channel: "TBD"
     namespace: "TBD"
-    reason: "Environment must have Red Hat OpenShift AI 3.5 pre-installed; learners use it but do not install it themselves"
+    reason: "Environment must have Red Hat OpenShift AI pre-installed; learners use it but do not install it themselves"
     source_module: module-01-what-is-a-quickstart
 
-applications: []
-# The three featured QuickStarts (AI Quickstart RAG, IT Self Service, PPE Compliance Monitor)
-# must be PRE-DEPLOYED into each tenant namespace ahead of the session — learners only USE
-# them in Modules 2-4, they do not deploy anything. Author is building this GitOps automation
-# separately; repo/chart references below are placeholders pending that work.
+# All featured QuickStarts are PRE-DEPLOYED per tenant ahead of the session — learners only
+# USE them (Modules 2-5), they deploy nothing. Each app gets its OWN namespace so they do not
+# collide, and each is reached via its own Showroom tab (no routes/oc for learners).
+applications:
+  - name: AI Quickstart RAG
+    deploy: gitops
+    repo: rh-ai-quickstart/RAG
+    namespace: "user-{{ guid }}-rag"
+    showroom_tab: "RAG UI"
+    model: "{{ ai_quickstart_rag_llm_model }} (via MaaS/LiteLLM)"
+    source_module: module-02-rag-running-the-demo
+    status: deployed   # already in the LB2142 tenant common.yaml
+
+  - name: AI Quickstart IT Self Service
+    deploy: makeops   # quickstart_deploy_via_make, INSTALL_MODE=demo
+    repo: rh-ai-quickstart/it-self-service-agent
+    namespace: "user-{{ guid }}-it-selfsvc"
+    showroom_tab: "Webmail"
+    model: "llama-scout-17b (via MaaS/LiteLLM) — the extra model to add alongside RAG's"
+    mode: "demo/mock (mock-eventing, mock-ServiceNow, Greenmail) — no Knative/Kafka"
+    source_module: module-04-it-self-service-quickstart-selling-the-demo
+    status: tenant-exists   # ai-qs-it-self-service-tenant exists; must be merged into LB2142
+
+  - name: AI Quickstart PPE Compliance Monitor
+    deploy: gitops   # Helm, OpenVINO/CPU profile (make deploy-openvino)
+    repo: rh-ai-quickstart/multimodal-compliance-monitor
+    namespace: "TBD (own namespace, e.g. user-{{ guid }}-ppe)"
+    showroom_tab: "TBD (dashboard Route)"
+    model: "remote MaaS LLM for chat; detection on CPU via OpenVINO Model Server (no GPU)"
+    note: "ON HOLD (TBD) — separate QuickStart, decoupled from IT Self Service. When resumed: MUST use OpenVINO/CPU profile (chart defaults to KServe/GPU; tenant has gpu_nodes: 0). Verified: chat LLM is remote MaaS, but YOLO detection requires in-cluster OVMS serving (no remote-detection mode). Ships its own sample video + models."
+    source_module: module-05-ppe-compliance-monitor-quickstart-selling-the-demo
+    status: on-hold
 
 rbac:
   - type: namespace
-    name: "{{ user_namespace }}"
-    reason: "Per-tenant sandbox namespace (Sandbox API Cluster/Tenant model) isolating each SA's pre-deployed QuickStarts"
-
-seed_data:
-  - type: git-repo
-    name: ai-qs-rag
-    url: "TBD"
-    target: "{{ user_namespace }}"
-    reason: "AI Quickstart RAG — must be pre-deployed and running before the session; learner only uses it in Module 2"
-    source_module: module-02-rag-quickstart-selling-the-demo
-  - type: git-repo
-    name: ai-qs-it-self-service
-    url: "TBD"
-    target: "{{ user_namespace }}"
-    reason: "AI Quickstart IT Self Service — must be pre-deployed and running before the session; learner only uses it in Module 3"
-    source_module: module-03-it-self-service-quickstart-selling-the-demo
-  - type: git-repo
-    name: ai-qs-ppe-comp
-    url: "TBD"
-    target: "{{ user_namespace }}"
-    reason: "AI Quickstart PPE Compliance Monitor — must be pre-deployed and running before the session; learner only uses it in Module 4"
-    source_module: module-04-ppe-compliance-monitor-quickstart-selling-the-demo
+    name: "user-{{ guid }}-rag / user-{{ guid }}-it-selfsvc / PPE namespace"
+    reason: "Per-tenant, per-QuickStart namespaces (Sandbox API Cluster/Tenant model) so RAG, IT Self Service, and PPE do not collide"
 
 broken_resources: []
 
 provision_data:
   - key: quickstart_catalog_url
-    value: "TBD"
-    description: "Link to the Red Hat QuickStarts catalog shown in Module 1"
+    value: "https://docs.redhat.com/en/learn/ai-quickstarts"
+    description: "Link to the Red Hat AI Quickstarts catalog shown in Module 1"
 
 notes: |
-  Lab flow changed to sales-enablement: learners USE three pre-deployed QuickStarts (AI
-  Quickstart RAG, IT Self Service, PPE Compliance Monitor) rather than deploying them. All
-  three must be up and running in each tenant namespace before the session starts.
+  Sales-enablement lab: learners USE pre-deployed QuickStarts rather than deploying them.
+  All featured QuickStarts must be up and running in each tenant before the session.
 
-  Author is building this GitOps automation separately (per-tenant pre-deploy of all three
-  QuickStarts) — this manifest documents the requirement; repo/chart URLs above are
-  placeholders pending that work.
+  Tenant (LB2142) hosts multiple QuickStarts side by side:
+    - RAG via GitOps (already in the tenant common.yaml), namespace user-{{ guid }}-rag,
+      RAG UI tab.
+    - IT Self Service via MakeOps (quickstart_deploy_via_make, INSTALL_MODE=demo),
+      namespace user-{{ guid }}-it-selfsvc, Webmail tab. The ai-qs-it-self-service-tenant
+      AgnosticV config already exists and must be merged into LB2142.
+    - PPE Compliance Monitor (to add) via Helm on the OpenVINO/CPU profile, own namespace,
+      dashboard tab.
 
-  Module 5 is an optional stretch module (deploy a QuickStart end-to-end) — target QuickStart
-  is still TBD, so no automation requirement is defined for it yet.
+  Build-phase definition of done: add the extra model (llama-scout-17b) to MaaS/LiteLLM
+  alongside RAG's, add the MakeOps workload for IT Self Service, add the PPE Helm workload
+  on the OpenVINO profile, and keep each app in its own namespace.
 
-  All three QuickStarts are moving to production as of this revision — repo/chart references
-  may change before development starts.
+  Module 6 (Deploy a QuickStart) remains an optional stretch — target QuickStart TBD, no
+  automation requirement defined yet.

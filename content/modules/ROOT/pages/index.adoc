@@ -1,5 +1,60 @@
-= My Project
+= Selling with Red Hat QuickStarts: A Hands-On Tour for Solution Architects
+:imagesdir: ../images
 
-This project was created with the RHDP Publishing House template.
+Your customer doesn't want a slide about AI. They want to see it work on their problem. This lab shows you how to deliver that moment — fast — using Red Hat AI Quickstarts.
 
-Run `/rhdp-publishing-house` in Claude Code to begin.
+A QuickStart is a pre-built, deployable reference application that turns a Red Hat AI capability into something a customer can watch run. For a Solution Architect, it's a selling tool: no weeks of setup, no custom build, just a working system you can demo and then tie back to the platform underneath it. In the next 75 minutes you'll learn what a QuickStart is, run the flagship AI Quickstart RAG as a live customer demo, and shape the agentic story that moves a deal forward.
+
+The whole lab is driven from the browser. The RAG application is already deployed and already loaded with data — you open the *RAG UI* tab and you're in. No console login, no commands, no setup in front of the customer.
+
+== Who This Is For
+
+This lab is written for Red Hat Solution Architects who already know their way around Red Hat OpenShift and Red Hat OpenShift AI, but haven't yet used QuickStarts as a way to sell. You should be comfortable navigating the OpenShift console and the basic ideas of projects and pods. You do not need any prior experience with RAG, vector databases, or agentic AI — the lab builds that as you go.
+
+== What You'll Learn
+
+* Explore the Red Hat AI Quickstarts catalog and identify how QuickStarts accelerate customer proofs-of-concept
+* Run the AI Quickstart RAG as a customer-facing demo using a pre-deployed instance
+* Demonstrate agentic RAG with live web search and narrate it as a customer sales story
+* Position the RAG QuickStart's value back to Red Hat OpenShift AI in a sales conversation
+
+== The Lab at a Glance
+
+This tour is four short modules, about 95 minutes end to end.
+
+[cols="1,4,1",options="header"]
+|===
+| Module | Focus | Time
+
+| xref:module-01-what-is-a-quickstart.adoc[Module 1]
+| *Selling with Red Hat QuickStarts: What Is a QuickStart?* — what a QuickStart is, why it exists, and how it shortens the path from conversation to proof.
+| ~15 min
+
+| xref:module-02-rag-running-the-demo.adoc[Module 2]
+| *AI Quickstart RAG — Running the Demo* — the flagship demo. Run the grounded-answers story and land the generic-versus-grounded contrast that sells RAG.
+| ~20 min
+
+| xref:module-03-rag-selling-the-agentic-story.adoc[Module 3]
+| *AI Quickstart RAG — Selling the Agentic Story* — the live web-search wow, and how to narrate agentic RAG as a customer sales story.
+| ~20 min
+
+| xref:module-04-it-self-service-quickstart-selling-the-demo.adoc[Module 4]
+| *AI Quickstart IT Self Service — Selling the Demo* — an AI agent that resolves a laptop-refresh request end to end over email, applying policy automatically.
+| ~20 min
+|===
+
+The AI Quickstart RAG is the flagship for this lab, but it's one of a growing catalog. More QuickStarts covering other AI and platform use cases are coming in future revisions of this course.
+
+== The Environment
+
+You don't set anything up. The lab runs on Red Hat OpenShift Container Platform 4.21 with Red Hat OpenShift AI, and the AI Quickstart RAG is pre-deployed and pre-loaded with sample enterprise data served through Models-as-a-Service (MaaS). Everything you need is one tab away in the lab interface.
+
+== Architecture
+
+Under the demo, the RAG QuickStart ties retrieval, a vector store, and a served model together on Red Hat OpenShift AI. You don't need to configure any of it, but it helps to have the picture in mind when a customer asks what's running underneath.
+
+image::https://raw.githubusercontent.com/rh-ai-quickstart/RAG/main/docs/images/rag-architecture.png[AI Quickstart RAG architecture on Red Hat OpenShift AI, link=self, window=blank]
+
+== Ready to Begin
+
+Start with xref:module-01-what-is-a-quickstart.adoc[Module 1] to ground the concept, then move into the demo. By the end you'll be able to walk into a customer meeting, open a working AI application, and tell the story that sells it.
