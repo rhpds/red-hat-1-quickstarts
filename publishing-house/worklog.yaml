@@ -43,3 +43,25 @@ entries:
       QuickStart) deferred. Modules 2/3 carry verify-at-testing notes but
       the apps exist. No module is at 100%, so none were marked complete in
       spec.yaml this session.
+  - id: "2026-10-12-002"
+    timestamp: "2026-10-12T00:00:00Z"
+    author: "tonykay"
+    status: open
+    type: note
+    content: >-
+      AgnosticV: added IT Self Service to the LB2142 tenant alongside RAG on
+      branch ci/rh1-2027-lb2142-test-yamls (rhpds/agnosticv). Own namespace
+      user-{{ guid }}-it-selfsvc, Webmail tab, MakeOps (INSTALL_MODE=demo),
+      shared llama-scout-17b model + virtual key (the handoff's "extra model"
+      was a misread — RAG already uses llama-scout-17b), shared CRQ summed to
+      52 CPU / 80Gi / 112Gi. Reconciled OpenShift AI from stable-2.25 to
+      stable-3.4 (the channel already proven with RAG in ai-qs-rag-cluster):
+      KServe + ModelRegistry Managed, ModelMesh Removed (gone in 3.x),
+      OpenShift AI Showroom tab re-pointed to the Gateway-API host
+      data-science-gateway.<ingress>. Showroom collection bumped to v1.8.0.
+      See docs/adr/0003. OPEN ITEMS: (1) RAG proven on stable-3.4 standalone,
+      so the residual risk is the combined tenant (KServe/ModelRegistry on +
+      dashboard tab) — verify in CI; fallback is pin back to stable-2.25. (2) it-self-
+      service-agent pinned v0.0.13 on purpose; v0.0.15 exists (Langfuse ->
+      MLflow swap) — bump only after re-verifying a demo deploy. (3) Showroom
+      v1.8.0 crosses the v1.7.0 Traefik v3 change — re-test both guides.
