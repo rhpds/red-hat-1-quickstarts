@@ -51,9 +51,9 @@ applications:
     namespace: "TBD (own namespace, e.g. user-{{ guid }}-ppe)"
     showroom_tab: "TBD (dashboard Route)"
     model: "remote MaaS LLM for chat; detection on CPU via OpenVINO Model Server (no GPU)"
-    note: "MUST use OpenVINO/CPU profile — chart defaults to KServe/GPU; tenant has gpu_nodes: 0. Ships its own sample video + models."
+    note: "ON HOLD (TBD) — separate QuickStart, decoupled from IT Self Service. When resumed: MUST use OpenVINO/CPU profile (chart defaults to KServe/GPU; tenant has gpu_nodes: 0). Verified: chat LLM is remote MaaS, but YOLO detection requires in-cluster OVMS serving (no remote-detection mode). Ships its own sample video + models."
     source_module: module-05-ppe-compliance-monitor-quickstart-selling-the-demo
-    status: to-add
+    status: on-hold
 
 rbac:
   - type: namespace

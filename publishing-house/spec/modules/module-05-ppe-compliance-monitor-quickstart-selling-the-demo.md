@@ -1,8 +1,9 @@
 # Module 5: AI Quickstart PPE Compliance Monitor — Selling the Demo
 
-> **Status: planned, not yet written.** Grounded on `rh-ai-quickstart/multimodal-compliance-monitor`.
-> Content will be adapted from the existing `rh-ai-qs-showroom/showroom-ai-quickstart-multimodal-monitor`
-> lab once the app is pre-deployed in the LB2142 tenant. See `docs/adr/0002-modules-4-5-grounding.md`.
+> **Status: ON HOLD (TBD).** A separate QuickStart, decoupled from IT Self Service and paused
+> for now. When resumed: grounded on `rh-ai-quickstart/multimodal-compliance-monitor`, adapting
+> the existing `rh-ai-qs-showroom/showroom-ai-quickstart-multimodal-monitor` lab, deployed on the
+> OpenVINO/CPU profile. See `docs/adr/0002-modules-4-5-grounding.md`.
 
 ### Brief Overview
 
