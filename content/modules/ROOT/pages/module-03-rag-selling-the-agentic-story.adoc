@@ -1,0 +1,144 @@
+= AI Quickstart RAG — Selling the Agentic Story
+:imagesdir: ../images
+
+This is part two of the flagship demo. In the last module you landed the core RAG pitch: generic answer versus grounded, citable answer over the customer's own documents. Now you raise the ceiling. In about 20 minutes you'll show the agentic side — the assistant planning across multiple steps, calling tools, and answering with live data the base model never saw.
+
+Same pre-deployed app, same *RAG UI* tab. No login, no routes, no commands. You flip one setting in the sidebar and the demo levels up.
+
+== What You'll Take Away
+
+* Run the agentic RAG demo and show the agent calling tools across multiple steps
+* Demonstrate the live web-search tool answering a question beyond the model's training cutoff
+* Position direct RAG versus agentic RAG against a real customer use case
+* Deliver a short sales narrative that ties the RAG QuickStart back to Red Hat OpenShift AI
+
+== From Direct to Agentic
+
+In the last module you ran *Direct* mode: one question, one retrieval, one answer. Fast and clean. Perfect for a policy lookup where the customer wants a citable answer in a single turn.
+
+Agent mode is a different gear. The model plans, reasons, and calls tools across several turns before it answers. Point it at a knowledge base and it decides on its own when to retrieve and how many times — that's agentic RAG. Give it a web search tool and it can reach past its training data to pull live information. The UI shows the work: each tool call, each result, and the reasoning, all as collapsible sections the customer can open.
+
+Frame it for the customer this way. Direct mode is the fast, single-turn, citable lookup. Agentic mode is multi-step synthesis plus live external data. Same assistant, two speeds — you pick the one that fits the question.
+
+== Exercise 1: Turn On Agent Mode
+
+You'll switch the assistant into agentic mode and show it reasoning across steps against the customer's knowledge base.
+
+. In the right pane, click the *RAG UI* tab if it isn't already open.
+. In the left sidebar, set *Processing mode* to *Agent-based*.
++
+image::agent-mode.png[Setting Processing mode to Agent-based in the sidebar, role=expand]
+
+. Open the *Select Document Collections for RAG queries* dropdown and select *hr-vector-db-v1-0*. This hands the agent a retrieval tool over FantaCo's HR knowledge.
++
+image::select-knowledge.png[Selecting a knowledge base to give the agent a retrieval tool, role=expand]
+
+. Ask a question that forces the agent to do more than one lookup. Type this and press *Enter*:
++
+[source,text]
+----
+Compare our vacation policy with our sick leave policy and summarize the key differences.
+----
+
+. Watch what the agent does, and narrate it. Instead of a single retrieval, it breaks the question into parts, retrieves for each, and synthesizes one consolidated answer. Open the collapsible reasoning steps so the customer can see the retrieval tool firing more than once.
+
+Say it out loud for the customer: "I asked one question that really contains two. The assistant figured that out, looked up both policies in your documents, and wrote the comparison for me — and it shows its work." That's the agentic difference in one sentence.
+
+=== Verify
+
+The answer covers both the vacation policy and the sick leave policy, and you can open the reasoning steps to see the agent calling retrieval more than once. If both are true, you've shown multi-step agentic RAG.
+
+== Exercise 2: The Wow — Live Web Search
+
+// VERIFY against the live environment before the event: confirm the Web Search tool is enabled and the Super Bowl scenario behaves as written.
+This is the headline beat. You'll ask a question the model cannot possibly know from training, show it stumble, then turn on web search and watch it answer correctly with live data. Done well, this is the moment the customer leans in.
+
+=== Ask without web search
+
+. Keep *Processing mode* on *Agent-based*, with the Web Search tool *disabled*.
+. Ask a question that lands after the model's training cutoff. Type this and press *Enter*:
++
+[source,text]
+----
+Who won the Super Bowl in 2025?
+----
+
+. Read the answer with the customer. The model either guesses wrong or admits it doesn't have up-to-date information. Don't gloss over it — this miss is the setup.
+
+Say it out loud: "Every model has a training cutoff. Ask it about anything after that date and it's flying blind. Watch what happens when we give it a tool to go find out."
+
+=== Ask with web search
+
+. In the left sidebar, enable the *Web Search* tool.
+. Ask the exact same question again. Type this and press *Enter*:
++
+[source,text]
+----
+Who won the Super Bowl in 2025?
+----
+
+. This time the agent calls the web search tool before answering. Open the reasoning trace and walk the customer through the collapsible steps: the *Tool call* with the query, the *Tool result* with the data it pulled back, the *Agent reasoning*, and the *Final answer*.
++
+image::websearch-result.png[The agent returning a grounded web-search answer with a collapsible tool-call trace, role=expand]
+
+The grounded answer comes back correct — the Philadelphia Eagles won Super Bowl LIX, defeating the Kansas City Chiefs 40–22. Deliver the close: "Same question, same assistant. The only difference is we gave it a tool. Now it's answering with live data it never saw in training — grounded, and you can see exactly where it came from."
+
+[IMPORTANT]
+====
+When you run Agent mode with tools and RAG together, set *Max Tokens* to its maximum so retrieved chunks and tool results aren't truncated. *Max Inference Iterations* caps how many reasoning loops the agent can take — leave headroom so it can finish the job.
+====
+
+=== Verify
+
+Without web search the model missed or hedged. With web search it returned the correct, grounded answer and you could open the tool-call trace. That contrast is the wow.
+
+== Positioning: Direct vs. Agentic for the Customer
+
+Your job here isn't to click features. It's narration and framing. You decide what to show first, you anticipate the customer's questions, and you tie every beat back to their world.
+
+Use this as your framing cheat sheet:
+
+* *Direct RAG* — fast, single-turn, citable. Position it for high-volume policy and knowledge lookups: "What's our travel reimbursement limit?" The customer wants one trustworthy answer with a source, instantly.
+* *Agentic RAG* — multi-step synthesis plus live external data. Position it for questions that span documents or need information beyond the knowledge base: "Compare these two policies," or anything that touches current events, pricing, or live systems.
+
+The web-search beat is your differentiator. It proves the system answers *live* data the base model never saw — not a canned script, not a static index. In front of a customer that's hard to argue with.
+
+Expect these questions, and have the answers ready:
+
+* "Is it just making this up?" — No. Open the tool-call trace. Every answer shows its retrieval and its sources.
+* "Can it use our live systems, not just the web?" — The same tool-calling pattern extends to other tools and APIs. Web search is the one we're showing today.
+* "Won't it run forever?" — No. *Max Inference Iterations* caps the reasoning loops. You're in control of the budget.
+
+== The Tie-Back: What the Customer Is Actually Buying
+
+Always land this. The demo is the hook; the platform is the product.
+
+Everything you just showed runs on *Red Hat OpenShift AI*, with Models-as-a-Service serving the model behind it. The customer isn't buying a chatbot — they're buying the supportable, repeatable platform that lets them run this on *their* own data, in their own environment, with Red Hat behind it. The agentic demo makes the capability real; OpenShift AI is what makes it production.
+
+== How I'd Pitch This
+
+Here's a one-paragraph recap you can take straight to a customer:
+
+"Your people lose hours hunting through internal documents, and generic AI can't help because it doesn't know your business — and can't prove where its answers come from. This assistant does both. In its fast mode it gives one citable answer from your own documents. In its agentic mode it plans across multiple steps, compares policies, and even reaches out to live data beyond what any model learned in training — and it shows its work every time. It all runs on Red Hat OpenShift AI, so what you saw in the demo is the same thing you run in production, on your data, fully supported."
+
+== Learning Outcomes Checkpoint
+
+Before moving on, confirm you can do each of these:
+
+* [ ] Switch the assistant into Agent-based mode and attach a knowledge base
+* [ ] Run a multi-part question and show the agent retrieving more than once in the reasoning trace
+* [ ] Run the Super Bowl scenario and show the before-and-after of enabling web search
+* [ ] Explain when you'd position direct RAG versus agentic RAG for a customer
+* [ ] Deliver the OpenShift AI tie-back in one sentence
+
+== Key Takeaways
+
+* Agentic RAG plus web search is the demo's wow — live, grounded answers beyond the model's training data.
+* The SA's job is narration and framing. The sales story is the deliverable, not the clicks.
+* The close is always the tie-back: this runs on Red Hat OpenShift AI, and that platform is what the customer is buying.
+
+== Conclusion
+
+You've now run both halves of the flagship demo. Module two proved trust — grounded, citable answers over the customer's own documents. This module proved reach — an agent that plans, calls tools, and pulls in live data the model never saw. Put them together and you've shown a customer the full arc: from a generic model that guesses to an enterprise assistant that reasons, retrieves, and proves its work, all on a platform Red Hat stands behind.
+
+That's the story. Go tell it.

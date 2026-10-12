@@ -1,7 +1,7 @@
 ---
 site:
-  title: My Project
-  url: https://github.com/rhpds/my-project
+  title: Selling with Red Hat QuickStarts
+  url: https://github.com/rhpds/red-hat-1-quickstarts
   start_page: modules::index.adoc
 
 content:

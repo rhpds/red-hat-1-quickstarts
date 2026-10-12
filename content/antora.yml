@@ -1,5 +1,5 @@
 name: modules
-title: My Project
+title: Selling with Red Hat QuickStarts
 version: ~
 nav:
   - modules/ROOT/nav.adoc

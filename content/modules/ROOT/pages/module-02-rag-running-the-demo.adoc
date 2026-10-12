@@ -1,0 +1,141 @@
+= AI Quickstart RAG — Running the Demo
+:imagesdir: ../images
+
+This is the flagship demo. In about 20 minutes you'll run the AI Quickstart RAG as a live customer demo and land the one moment that sells it: a generic, ungrounded answer sitting next to a grounded, citable answer over the customer's own documents.
+
+The app is already deployed and already loaded with data. You click one tab and you're in. That's the point — a Solution Architect gets to the "wow" in seconds, with zero setup in front of the customer.
+
+== What You'll Take Away
+
+* Open and orient to the pre-deployed AI Quickstart RAG from the RAG UI tab
+* Frame the FantaCo enterprise use case as a customer-relevant sales story
+* Run the direct-chat RAG demo and show grounded answers with real source citations
+* Articulate the value: accurate, citable answers over a customer's own knowledge, with fewer hallucinations
+
+== The FantaCo Story
+
+Lead with the story, not the architecture. It gives the customer a mirror to see themselves in.
+
+FantaCo is a large enterprise. Its employees waste time hunting across HR, Legal, Procurement, Sales, and TechSupport documents to answer everyday questions. So FantaCo launched a secure RAG chatbot. Now one chat interface connects every employee to all of that internal documentation.
+
+RAG — retrieval-augmented generation — is what makes this trustworthy. A plain large language model answers from whatever it memorized during training. RAG retrieves relevant passages from the customer's own knowledge first, then answers from those. The result is more accurate, more domain-specific, and far less prone to making things up.
+
+For your customer, the pitch is simple. This is not a generic chatbot. It is a chatbot that knows *their* business, and can prove where every answer came from.
+
+== Exercise 1: Open the Demo and Get Oriented
+
+Everything happens inside Showroom. There is no console login, no route to copy, no commands to run. You click a tab.
+
+. In the right pane, click the *RAG UI* tab to open the chatbot.
++
+image::rag-ui-chat.png[The RAG UI chat interface with the left sidebar and chat input, role=expand]
+
+. Take ten seconds to orient the customer to the screen. Point out the pieces you'll use in the demo:
++
+* The *chat input box* at the bottom — where you ask questions.
+* The *left sidebar* — where you shape the experience: the *Model*, the *Processing mode* (Direct or Agent-based), the *Select Document Collections for RAG queries* dropdown, the sampling controls, and the system prompt.
+
+The selling beat here: nothing was installed, nothing was configured. The environment came pre-deployed and pre-loaded with FantaCo's documents, so the customer is looking at a working system instead of a diagram.
+
+=== Verify
+
+You see the chat input box at the bottom and the left sidebar on the left. The app is ready to take a question.
+
+== Exercise 2: The Core Demo — Generic vs. Grounded
+
+This is the heart of the pitch. You'll ask the same style of question twice: once with no knowledge base, once with the customer's knowledge base selected. The contrast is the demo.
+
+=== Ask without a knowledge base
+
+. In the left sidebar, make sure *Processing mode* is set to *Direct*.
+. Leave *Select Document Collections for RAG queries* unset.
+. In the chat box, type this and press *Enter*:
++
+[source,text]
+----
+What is retrieval-augmented generation?
+----
+
+. Read the answer with the customer. It's a reasonable, general explanation pulled from the model's training data — and notice there are *no source citations*.
++
+image::chat-direct-result.png[A direct chat answer with no source citations, role=expand]
+
+Say it out loud for the customer: "That's a generic model answering from memory. Useful, but you can't tell where it came from, and it knows nothing about your business." That sets up the turn.
+
+=== Ask with the customer's knowledge base
+
+The quickstart ships with FantaCo's knowledge bases already loaded: `hr-vector-db-v1-0`, `legal-vector-db-v1-0`, `procurement-vector-db-v1-0`, `sales-vector-db-v1-0`, and `techsupport-vector-db-v1-0`. You'll use HR.
+
+. Keep *Processing mode* on *Direct*.
+. Open the *Select Document Collections for RAG queries* dropdown and select *hr-vector-db-v1-0*.
++
+image::click-knowledge-base-drop-down.png[Selecting a knowledge base from the document collections dropdown, role=expand]
+
+. Ask a question that only the customer's documents can answer. Type this and press *Enter*:
++
+[source,text]
+----
+What is the vacation policy for full-time employees?
+----
+
+. This is the money shot. The answer is now grounded in FantaCo's actual HR documents. Point out the *Searched vector stores* indicator and open the expandable *File Search Results* panel to trace the answer straight back to the source document.
++
+image::chat-rag-result.png[A grounded RAG answer showing the searched vector stores and expandable file search results, role=expand]
+
+Deliver the close: "Same assistant, but now it answers from *your* knowledge — and it shows you exactly which document it used." Source citations are the credibility moment. They turn "trust the AI" into "verify the AI," which is what an enterprise buyer actually needs to hear.
+
+[NOTE]
+====
+Retrieved chunks share the token budget with the answer. If a grounded answer gets cut short, raise *Max Tokens* in the sidebar and ask again.
+image::max-token-settings.png[Adjusting Max Tokens in the sidebar, role=expand]
+====
+
+=== Verify
+
+Your first answer had no citations. Your second answer cited FantaCo's HR documents and let you open the source. If both are true, you've just shown the contrast that sells RAG.
+
+== Exercise 3 (Optional): "Point It at Our Data"
+
+Expect this question in every real customer meeting: "That's nice, but can it use *our* documents?" The answer is yes, and you can show the exact path in under a minute. Only run this if time allows — the core sale is already done in Exercise 2.
+
+. In the left sidebar, click *Upload Documents*.
+. Open the *Select a vector database* dropdown and choose *➕ Create New*.
++
+image::create-new-dropdown.png[Choosing Create New from the vector database dropdown, role=expand]
+
+. Enter a unique name, for example `my-kb`, and click *Add*.
++
+image::create-vector-db.png[Creating a new vector database, role=expand]
+
+. Choose an *Extraction method* for your files: *LlamaStack Provider* for `.txt`, `.pdf`, and `.md`; *Docling* for `.docx` and `.xlsx`.
+. Click *Upload*, choose your files, and wait for the green *Successfully uploaded* banner.
++
+image::upload-success.png[The success banner confirming documents were uploaded, role=expand]
+
+The selling angle: this is the moment the customer realizes it's *their* chatbot. New knowledge base, drop in their documents, and the grounded, citable answers now come from their own content.
+
+=== Verify
+
+You created a new knowledge base and saw the *Successfully uploaded* banner. You can now select that collection and run the same grounded-chat demo against the customer's own data.
+
+== Learning Outcomes Checkpoint
+
+Before moving on, confirm you can do each of these:
+
+* [ ] Open the RAG UI from the tab and orient a customer to the chat box and sidebar
+* [ ] Tell the FantaCo story in a way a real customer can see themselves in
+* [ ] Run the same question with and without a knowledge base and name the difference
+* [ ] Point to the *Searched vector stores* indicator and open *File Search Results* to prove a citation
+* [ ] Explain, in one sentence, why grounded and citable answers matter to an enterprise buyer
+
+== Key Takeaways
+
+* RAG turns a generic LLM into a trustworthy assistant over the customer's own knowledge.
+* Source citations are the credibility moment — grounded, traceable answers the customer can verify.
+* The pre-deployed, pre-loaded environment lets you get to the wow in seconds, with no setup.
+
+== Conclusion
+
+You just ran the flagship demo. The script is short on purpose: tell the FantaCo story, ask one question without data, ask it again with the customer's data, and let the citations do the convincing. That contrast — generic versus grounded — is the whole sale.
+
+In the next module you'll go deeper into the RAG quickstart and shape the agentic story for customers who want the assistant to do more than answer.

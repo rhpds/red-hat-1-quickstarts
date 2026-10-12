@@ -1,0 +1,31 @@
+= Selling with Red Hat QuickStarts: What Is a QuickStart?
+
+// PLACEHOLDER — to be fleshed out after the flagship RAG content (Modules 2-3) is complete.
+
+Welcome to the lab. This opening module sets the stage. It is a short positioning piece, not a hands-on exercise, so there is nothing to deploy here yet.
+
+== What You'll Take Away
+
+* Explain what a Red Hat QuickStart is and the problem it solves for a customer
+* Describe how a QuickStart shortens the sales cycle with a credible hands-on demo
+* Use the AI Quickstarts catalog to match a customer use case to the right QuickStart
+
+== What Is a Red Hat QuickStart?
+
+A Red Hat QuickStart is a packaged, demo-ready proof-of-concept accelerator. Instead of walking a customer through a slide deck, you stand up a working, customer-relevant scenario in minutes. That turns an abstract pitch into something the customer can see running.
+
+For a Solution Architect, this changes the sales conversation. You lead with a live demo, show real behavior on Red Hat OpenShift and Red Hat OpenShift AI, and let the customer react to a working system. The result is a shorter, more credible path from first conversation to proof of value.
+
+== The AI Quickstarts Catalog
+
+The AI Quickstarts catalog is where you find and match QuickStarts to a customer use case. Browse it at https://docs.redhat.com/en/learn/ai-quickstarts[the AI Quickstarts catalog^] to see what's available and which scenario each one addresses. When a customer describes a problem, the catalog is your starting point for picking the QuickStart that fits.
+
+== What's Next in This Lab
+
+The rest of the lab is hands-on. You'll run three pre-deployed AI Quickstarts as customer demos:
+
+* *AI Quickstart RAG* — the flagship, covered in Modules 2 and 3
+* *AI Quickstart IT Self Service* — Module 4
+* *AI Quickstart PPE Compliance Monitor* — Module 5
+
+Start with the flagship RAG demo in Module 2.

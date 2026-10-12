@@ -1,5 +1,9 @@
 # Module 1: Selling with Red Hat QuickStarts: What Is a QuickStart?
 
+> **Status: placeholder.** This module ships as a thin positioning stub for now and
+> will be fleshed out after the flagship RAG content (Modules 2–3) is complete. The
+> catalog tour targets `docs.redhat.com/en/learn/ai-quickstarts`.
+
 ### Brief Overview
 
 This module opens the lab with a presentation-style introduction to Red Hat QuickStarts: what they are, the problem they solve for customers, and how they work as a selling and demo mechanism for Solution Architects. It gives participants a guided tour of the QuickStarts catalog and how to match a QuickStart to a customer use case, and optionally walks through how to demo one of the lab's three featured QuickStarts to a customer. There is no hands-on deployment in this module — it is framing and context-setting for the rest of the lab.

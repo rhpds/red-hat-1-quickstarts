@@ -51,12 +51,19 @@ Lab (hands-on)
 
 | Module | Title | Duration |
 |--------|-------|----------|
-| 1 | Selling with Red Hat QuickStarts: What Is a QuickStart? | 15 min |
-| 2 | AI Quickstart RAG — Selling the Demo | 20 min |
-| 3 | AI Quickstart IT Self Service — Selling the Demo | 20 min |
-| 4 | AI Quickstart PPE Compliance Monitor — Selling the Demo | 20 min |
-| — | **Total core** | **1.25 hours** |
-| 5 | Deploy a QuickStart (Optional/Stretch) | 20 min, if time allows |
+| 1 | Selling with Red Hat QuickStarts: What Is a QuickStart? (placeholder) | 15 min |
+| 2 | AI Quickstart RAG — Running the Demo | 20 min |
+| 3 | AI Quickstart RAG — Selling the Agentic Story | 20 min |
+| — | **Total current scope** | **~55 min** |
+| 4 | AI Quickstart IT Self Service — Selling the Demo (deferred) | 20 min |
+| 5 | AI Quickstart PPE Compliance Monitor — Selling the Demo (deferred) | 20 min |
+| 6 | Deploy a QuickStart (Optional/Stretch, deferred) | 20 min, if time allows |
+
+> **Scope note:** The flagship RAG QuickStart now spans two modules (2–3), adapted
+> from the upstream `showroom-ai-quickstart-rag` lab and re-slanted toward sales
+> value. Module 1 is a placeholder to flesh out once the RAG content is complete.
+> Modules 4–6 are deferred until the RAG flagship is done. See
+> `docs/adr/0001-rag-spans-two-modules.md`.
 
 <!-- Each module 10-30 min. Total: lab 1-4 hours, demo 15-45 min. Modules should build on each other. -->
 

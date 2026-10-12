@@ -30,20 +30,24 @@ spec:
   - id: module-01
     title: 'Selling with Red Hat QuickStarts: What Is a QuickStart?'
     duration_min: 15
-    status: not_started
+    status: in_progress
   - id: module-02
-    title: "AI Quickstart RAG \u2014 Selling the Demo"
+    title: "AI Quickstart RAG \u2014 Running the Demo"
     duration_min: 20
-    status: not_started
+    status: in_progress
   - id: module-03
+    title: "AI Quickstart RAG \u2014 Selling the Agentic Story"
+    duration_min: 20
+    status: in_progress
+  - id: module-04
     title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
     duration_min: 20
     status: not_started
-  - id: module-04
+  - id: module-05
     title: "AI Quickstart PPE Compliance Monitor \u2014 Selling the Demo"
     duration_min: 20
     status: not_started
-  - id: module-05
+  - id: module-06
     title: Deploy a QuickStart (Optional/Stretch)
     duration_min: 20
     status: not_started
@@ -104,13 +108,22 @@ approval_checklist:
       \ a QuickStart end-to-end for SAs with time remaining."
     module_summaries:
     - title: 'Selling with Red Hat QuickStarts: What Is a QuickStart?'
-      overview: Presentation-style (dealer's choice format) introduction to what a
-        Red Hat QuickStart is and the problem it solves, a guided tour of the QuickStarts
-        catalog and how to match a QuickStart to a customer use case, and an optional
-        walkthrough of how to demo one of the lab's featured QuickStarts to a customer.
-    - title: "AI Quickstart RAG \u2014 Selling the Demo"
-      overview: Participants use an already-deployed AI Quickstart RAG instance, following
-        a guide focused on running and narrating the demo rather than deploying it.
+      overview: Placeholder module to be fleshed out after the flagship RAG content
+        lands. Will become a presentation-style introduction to what a Red Hat QuickStart
+        is, the problem it solves, and a guided tour of the QuickStarts catalog
+        (docs.redhat.com/en/learn/ai-quickstarts) for matching a QuickStart to a
+        customer use case.
+    - title: "AI Quickstart RAG \u2014 Running the Demo"
+      overview: Flagship QuickStart, part 1 of 2. Participants use an already-deployed
+        AI Quickstart RAG instance via the RAG UI tab, framing the FantaCo enterprise
+        use case and running the core grounded-answers demo (knowledge bases, direct
+        chat with source citations). Adapted from the upstream showroom-ai-quickstart-rag
+        lab, re-slanted toward sales value over technical depth.
+    - title: "AI Quickstart RAG \u2014 Selling the Agentic Story"
+      overview: Flagship QuickStart, part 2 of 2. Participants run the agentic RAG
+        and live web-search demo (the "Super Bowl 2025" moment showing live tool
+        calls vs stale training data), then practice the customer sales narrative and
+        talking points that tie the demo back to Red Hat OpenShift AI.
     - title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
       overview: Participants use an already-deployed AI Quickstart IT Self Service
         instance (speeding up ticket resolution). Built by the field from closer-to-real
@@ -163,4 +176,4 @@ approval_checklist:
     agnosticv_base_ci: ''
     approved_by: ''
     rejections: []
-showroom_content_status: not_started
+showroom_content_status: in_progress
