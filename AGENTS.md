@@ -50,3 +50,17 @@ All project tools live in `publishing-house/tools/`:
 - Module outlines: `publishing-house/spec/modules/`
 - Content: `content/modules/ROOT/pages/`
 - Navigation: `content/modules/ROOT/nav.adoc`
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in the repo's GitHub Issues (`rhpds/red-hat-1-quickstarts`, via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
