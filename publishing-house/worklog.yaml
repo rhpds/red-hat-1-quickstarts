@@ -22,3 +22,24 @@ entries:
       old Secure Agent Workspace / Private AI Coding Assistant content) and
       need to be re-run before submission; (2) Module 5's target QuickStart
       needs to be confirmed — author may pick a new one.
+  - id: "2026-10-12-001"
+    timestamp: "2026-10-12T19:58:44Z"
+    author: "tonykay"
+    status: open
+    type: note
+    content: >-
+      Module completion percentages (spec.yaml only tracks
+      not_started/in_progress/complete, so these live here). As of this
+      session, with the lab re-scoped so RAG spans two modules: Module 1
+      (What Is a QuickStart?) 50% — a deliberate placeholder being finished
+      LAST, after the hands-on content. Module 2 (AI Quickstart RAG —
+      Running the Demo) 85%. Module 3 (AI Quickstart RAG — Selling the
+      Agentic Story) 85%. Module 4 (AI Quickstart IT Self Service — Selling
+      the Demo) 85% — content written and published, but the demo steps are
+      unverified against a live environment and carry a // VERIFY note; the
+      app is not yet pre-deployed in the LB2142 tenant (see the AgnosticV
+      handoff in docs/handoffs/). Module 5 (PPE Compliance Monitor) ON HOLD
+      — a separate QuickStart, deliberately paused. Module 6 (Deploy a
+      QuickStart) deferred. Modules 2/3 carry verify-at-testing notes but
+      the apps exist. No module is at 100%, so none were marked complete in
+      spec.yaml this session.
