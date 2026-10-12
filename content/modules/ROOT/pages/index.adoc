@@ -20,7 +20,7 @@ This lab is written for Red Hat Solution Architects who already know their way a
 
 == The Lab at a Glance
 
-This tour is three short modules, about 75 minutes end to end.
+This tour is four short modules, about 95 minutes end to end.
 
 [cols="1,4,1",options="header"]
 |===
@@ -36,6 +36,10 @@ This tour is three short modules, about 75 minutes end to end.
 
 | xref:module-03-rag-selling-the-agentic-story.adoc[Module 3]
 | *AI Quickstart RAG — Selling the Agentic Story* — the live web-search wow, and how to narrate agentic RAG as a customer sales story.
+| ~20 min
+
+| xref:module-04-it-self-service-quickstart-selling-the-demo.adoc[Module 4]
+| *AI Quickstart IT Self Service — Selling the Demo* — an AI agent that resolves a laptop-refresh request end to end over email, applying policy automatically.
 | ~20 min
 |===
 

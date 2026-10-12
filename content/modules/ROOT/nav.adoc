@@ -2,3 +2,4 @@
 * xref:module-01-what-is-a-quickstart.adoc[Module 1: What Is a QuickStart?]
 * xref:module-02-rag-running-the-demo.adoc[Module 2: AI Quickstart RAG — Running the Demo]
 * xref:module-03-rag-selling-the-agentic-story.adoc[Module 3: AI Quickstart RAG — Selling the Agentic Story]
+* xref:module-04-it-self-service-quickstart-selling-the-demo.adoc[Module 4: AI Quickstart IT Self Service — Selling the Demo]

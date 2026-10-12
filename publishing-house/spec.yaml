@@ -42,7 +42,7 @@ spec:
   - id: module-04
     title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
     duration_min: 20
-    status: not_started
+    status: in_progress
   - id: module-05
     title: "AI Quickstart PPE Compliance Monitor \u2014 Selling the Demo"
     duration_min: 20

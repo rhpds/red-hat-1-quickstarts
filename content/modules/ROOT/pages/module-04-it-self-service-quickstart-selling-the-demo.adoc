@@ -1,0 +1,184 @@
+= AI Quickstart IT Self Service — Selling the Demo
+:imagesdir: ../images
+
+This is the next demo in the kit, and it answers a question every customer asks after the RAG story: "Great, it can answer my people — but can it actually *do* the work?" In about 20 minutes you'll run the IT Self-Service Agent as a live demo and land the moment that sells it: an employee asks for a laptop refresh in plain language, and the agent checks eligibility, shows the right options for their region, takes the approval, and files the ticket — end to end, in one conversation.
+
+The app is already deployed. You reach it by clicking one tab. No login, no console, no commands — a Solution Architect gets to the "wow" in seconds, with zero setup in front of the customer.
+
+== What You'll Take Away
+
+* Open and run the pre-deployed IT Self-Service Agent from the *Webmail* tab
+* Narrate the laptop-refresh workflow end to end: request, eligibility, options, approval, ticket created
+* Switch personas to prove the agent applies policy and regional catalogs, not a canned script
+* Position the value — faster resolution, higher compliance, fewer rejected requests — and tie it back to Red Hat OpenShift AI
+
+== The ACME Story
+
+Lead with the story, not the architecture. It gives the customer a mirror to see themselves in.
+
+Every enterprise runs the same tax on its people. An employee needs a new laptop, so they go hunting: which policy applies, am I even eligible yet, what can I order in my region, who approves it, and where do I file the ticket? Half the requests that reach IT are wrong — missing information, the wrong model, outside policy — so they bounce back, and the clock starts over.
+
+The IT Self-Service Agent collapses all of that into one conversation. The employee just says what they want. The agent checks eligibility against policy, shows the options that are actually available to them, confirms the choice, and opens the ServiceNow ticket for them. The request lands correct the first time.
+
+For your customer, the pitch is simple. This isn't a smarter help desk form. It's an agent that *completes the request* — applying the rules automatically so fewer requests get rejected, more close faster, and IT gets its time back.
+
+== How It Works
+
+You don't need to teach the architecture to sell it, but one picture earns credibility when the technical buyer in the room asks "what's actually happening?" A request manager takes the incoming message off whatever channel it arrived on. A routing agent reads intent and hands off to the right specialist. The specialist pulls grounded context — policy and catalog — from knowledge bases and tools, and when it's time to act, it calls a system like ServiceNow through an MCP server to create the ticket.
+
+[mermaid,width=100%]
+....
+sequenceDiagram
+    participant U as User (email)
+    participant RM as Request Manager
+    participant RA as Routing agent
+    participant SA as Laptop specialist
+    participant KT as Knowledge & tools (RAG / MCP)
+    U->>RM: Incoming message (channel adapter)
+    RM->>RA: Classify / route
+    RA->>SA: Hand off laptop refresh
+    SA->>KT: Policy & catalog context
+    KT-->>SA: Grounded context
+    SA->>U: Eligibility, options, confirmations
+    U->>SA: Selection & approval
+    SA->>KT: Create ticket (e.g. ServiceNow)
+    KT-->>SA: Ticket ID
+    SA->>U: Confirmation with ticket reference
+....
+
+The one line to say out loud: "A routing agent triages intent and hands off to specialist agents, and those specialists reach real systems through tools. Adding a new process later is adding a specialist, not rebuilding the product."
+
+== Exercise 1: Run the Laptop-Refresh Demo
+
+// VERIFY against the live environment before the event: confirm the Webmail tab, the pre-seeded users, and the laptop-refresh flow behave as written.
+This is the heart of the demo. You'll play an employee emailing IT and let the agent walk the whole request to a filed ticket. Everything happens inside Showroom — you click the *Webmail* tab and you're in.
+
+A word on the channel, because a customer will ask. The agent "meets employees where they already work" — their email. What you're looking at here is a test inbox standing in for a real corporate mailbox, so you can drive the conversation live. That's a strength, not a workaround: no new app for employees to learn, no portal to adopt. They email IT the way they already do, and an agent answers.
+
+[TIP]
+====
+Pre-warm the model before you start narrating. As soon as you open the *Webmail* tab, send the first "Hello" email *before* you turn to the customer. The first response spins the model up and can be slower; get that out of the way off-camera so the first reply the customer sees comes back fast. LLM responses can take 10–30 seconds — when you're live, treat that pause as talk-time and narrate the value while the agent works.
+====
+
+. In the right pane, click the *Webmail* tab to open the test inbox.
+. Select the user *alice.johnson@company.com*. The subject is pre-filled with *Laptop refresh*.
+. Send a simple opener. In the message body, type this and send:
++
+[source,text]
+----
+Hello
+----
+
+. The routing agent greets Alice. Narrate it: "She didn't fill out a form or pick a category. She said hello, and the system is already figuring out who should help."
+. Now state the request. Type this and send:
++
+[source,text]
+----
+I'd like to start a laptop refresh request
+----
+
+. The routing agent hands off to the laptop specialist, which comes back with Alice's laptop information and eligibility, and offers to show options. This is the first selling beat: say "It already knows who Alice is, what she's on today, and whether she's eligible — before she's typed a single detail."
+. Ask to see what she can order. Type this and send:
++
+[source,text]
+----
+I'd like to see available laptop options
+----
+
+. The agent lists four laptop options with specs and pricing *for Alice's region*. Point out that these aren't a generic list — they're the models actually available to her under policy.
+. Make a choice. Short answers work. Type this and send:
++
+[source,text]
+----
+option 1
+----
+
+. The agent confirms the selection and asks for approval. Narrate the compliance angle: "It's confirming before it acts — no request gets filed half-complete or out of policy."
+. Approve it. Type this and send:
++
+[source,text]
+----
+Yes, please create the ticket
+----
+
+. The agent creates the ticket and returns a ticket number, for example *REQ3143724*. This is the close of the demo: a real request, resolved end to end, with a tracking number the employee can hold onto.
+
+[NOTE]
+====
+To run the flow again from the top — for a different persona or a second take — just send an email containing `reset`.
+====
+
+=== Verify
+
+You sent plain-language emails as Alice, the agent checked eligibility, showed region-specific options, took your approval, and returned a ticket number. If you got a REQ number back, you've shown the full end-to-end resolution that sells this demo.
+
+== Exercise 2 (Optional): Switch Personas to Prove It's Not a Script
+
+Run this only if time allows — the core sale is already done in Exercise 1. But it's the fastest way to kill the "is this just a canned demo?" doubt. Different employees get different, correct answers because the agent applies real policy and per-employee data.
+
+. Send an email containing `reset`, then run the same short laptop-refresh flow as a different person. Try these:
++
+* *alice.johnson@company.com* — EMEA, eligible. The baseline you already ran.
+* *maria.garcia@company.com* — LATAM. She sees a *different regional catalog* — the options that are valid where she is.
+* *john.doe@company.com* — EMEA, same catalog as Alice, but a *different laptop on file*. Same region, different personal data.
+
+. Narrate the point as you switch: "Same question, different employee. Maria sees her region's catalog. John's in Alice's region but he's on a different machine, so his eligibility reads differently. The agent is applying policy and reading each person's real data — this isn't a fixed script with the names swapped."
+
+=== Verify
+
+Two or three personas each produced a correct, region-appropriate response, and at least one differed from Alice's. That contrast is the proof that the agent is reasoning over policy and data, not replaying a recording.
+
+== Positioning: What You're Actually Selling
+
+Your job here isn't to click through a form. It's narration and framing. Keep coming back to the business outcomes the customer's leadership cares about:
+
+* *Faster resolution* — the request is captured correct and complete in one conversation, so tickets close faster and throughput goes up.
+* *Higher compliance* — policy and eligibility are applied automatically, every time, so requests follow the standard instead of relying on the employee to know it.
+* *Fewer rejected requests* — no missing or incorrect information means fewer bounce-backs and re-work for IT.
+
+Expect these questions, and have the answers ready:
+
+* "Is this only for laptops?" — No. The laptop refresh is today's example. The same framework handles other IT processes — Privacy Impact Assessments, RFP generation, access requests, software license requests — by swapping in a specialist agent, its knowledge, and its tools.
+* "Does my team have to live in email?" — No. Email is the channel we're showing. Meet users where they are.
+
+== Meet Users Where They Are
+
+This is the line that makes the architecture pay off for the customer. The same agent spans email, Slack, ServiceNow, and a CLI *without losing context*. Adding a channel is adding an adapter — not rewriting the agent. So you start where your people already are today, and you extend to the next channel tomorrow without starting over.
+
+Pair that with the extensibility point and you've described a platform, not a feature: new channel? Add an adapter. New process? Add a specialist agent, its knowledge base, and its MCP connections to the systems of record. The product you demoed for laptop refresh is the same product that handles the next ten IT workflows.
+
+== The Tie-Back: What the Customer Is Actually Buying
+
+Always land this. The demo is the hook; the platform is the product.
+
+Everything you just ran is built on *Red Hat OpenShift AI*, with Models-as-a-Service serving the model behind the agents. The customer isn't buying a laptop-ordering bot — they're buying the supportable, repeatable platform that lets them run agents like this against their own systems, in their own environment, with Red Hat behind it. The demo makes the capability real; OpenShift AI is what makes it production.
+
+== How I'd Pitch This
+
+Here's a one-paragraph recap you can take straight to a customer:
+
+"Half the IT requests your team gets are wrong — missing information, the wrong model, outside policy — so they bounce back and the clock resets. This agent fixes that at the source. An employee just emails IT the way they already do, and the agent checks their eligibility, shows the options that are actually valid for their region, confirms the choice, and files the ServiceNow ticket for them — correct the first time. It applies your policy automatically, so you get faster resolution, fewer rejected requests, and higher compliance. And it's not just laptops: the same framework handles your other IT processes by swapping in a new specialist, and it meets your people on whatever channel they already use. It all runs on Red Hat OpenShift AI, so what you saw in the demo is the same thing you run in production, on your systems, fully supported."
+
+== Learning Outcomes Checkpoint
+
+Before moving on, confirm you can do each of these:
+
+* [ ] Open the IT Self-Service Agent from the *Webmail* tab and send email as a pre-seeded user
+* [ ] Drive the laptop-refresh flow end to end to a created ticket number
+* [ ] Pre-warm the model before narrating, and turn the 10–30s latency into talk-time
+* [ ] Switch personas to show region-specific catalogs and per-employee data
+* [ ] Deliver the value framing and the OpenShift AI tie-back in one sentence each
+
+== Key Takeaways
+
+* The agent resolves a real request end to end, applying policy automatically — that is the sell.
+* Meet employees where they are: email here, but the same agent pattern extends to Slack, ServiceNow, and the web.
+* A pre-warmed, tightly scripted demo turns the 10–30s latency into talk-time — narration is the deliverable.
+
+== Conclusion
+
+You just ran an agent that does the work, not just answers questions. The script is short on purpose: tell the ACME story, let Alice ask for a laptop in plain language, and let the agent carry it all the way to a filed ticket. Switch a persona or two to prove it's reasoning over real policy and data, then close on the platform. Faster, more compliant, fewer rejects — resolved end to end on Red Hat OpenShift AI.
+
+That's the story. Go run it.
+
+Repo for reference: https://github.com/rh-ai-quickstart/it-self-service-agent
