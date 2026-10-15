@@ -39,8 +39,8 @@ Lab (hands-on)
 
 ## Products & Technologies
 
-- Red Hat OpenShift Container Platform 4.21
-- Red Hat OpenShift AI 3.5
+- Red Hat OpenShift Container Platform 4.20
+- Red Hat OpenShift AI (stable-2.25; pending upgrade to stable-3.5 via agnosticv PR #28533)
 - AI Quickstart RAG
 - AI Quickstart IT Self Service
 - AI Quickstart PPE Compliance Monitor
@@ -49,24 +49,27 @@ Lab (hands-on)
 
 ## Module Map
 
-| Module | Title | Duration |
-|--------|-------|----------|
-| 1 | Selling with Red Hat QuickStarts: What Is a QuickStart? (placeholder) | 15 min |
-| 2 | AI Quickstart RAG — Running the Demo | 20 min |
-| 3 | AI Quickstart RAG — Selling the Agentic Story | 20 min |
-| — | **Total current scope** | **~55 min** |
-| 4 | AI Quickstart IT Self Service — Selling the Demo (deferred) | 20 min |
-| 5 | AI Quickstart PPE Compliance Monitor — Selling the Demo (deferred) | 20 min |
-| 6 | Deploy a QuickStart (Optional/Stretch, deferred) | 20 min, if time allows |
+| Module | Title | Duration | Status |
+|--------|-------|----------|--------|
+| 1 | Selling with Red Hat QuickStarts: What Is a QuickStart? | 15 min | In progress (50% — placeholder, being written last) |
+| 2 | AI Quickstart RAG — Running the Demo | 20 min | In progress (85%) |
+| 3 | AI Quickstart RAG — Selling the Agentic Story | 20 min | In progress (85%) |
+| 4 | AI Quickstart IT Self Service — Selling the Demo | 20 min | In progress (85% — content written, unverified against live env) |
+| — | **Total current scope** | **~75 min** | |
+| 5 | AI Quickstart PPE Compliance Monitor — Selling the Demo | 20 min | On hold |
+| 6 | Deploy a QuickStart (Optional/Stretch) | 20 min | Deferred |
 
 > **Scope note:** The flagship RAG QuickStart spans two modules (2–3), adapted from
 > the upstream `showroom-ai-quickstart-rag` lab and re-slanted toward sales value.
 > Module 1 is a placeholder to flesh out once the hands-on content is complete.
-> Modules 4 (IT Self Service, grounded on `it-self-service-agent`) and 5 (PPE
-> Compliance Monitor, grounded on `multimodal-compliance-monitor`) are planned and
-> outlined but not yet written — `.adoc` content waits until each app is pre-deployed
-> in the LB2142 tenant. Module 6 (Deploy) remains deferred. See
-> `docs/adr/0001-rag-spans-two-modules.md` and `docs/adr/0002-modules-4-5-grounding.md`.
+> Module 4 (IT Self Service) is grounded on `it-self-service-agent` v0.0.13
+> (MakeOps deploy, `INSTALL_MODE=demo`); content written and published but demo
+> steps carry `// VERIFY` notes pending live environment validation. The app is not
+> yet pre-deployed in the LB2142 tenant on master — see agnosticv PR #28533.
+> Module 5 (PPE Compliance Monitor, grounded on `multimodal-compliance-monitor`)
+> is deliberately on hold. Module 6 (Deploy) remains deferred. See
+> `docs/adr/0001-rag-spans-two-modules.md`, `docs/adr/0002-modules-4-5-grounding.md`,
+> and `docs/adr/0003-it-self-service-ocp-ai-3.4.md`.
 
 <!-- Each module 10-30 min. Total: lab 1-4 hours, demo 15-45 min. Modules should build on each other. -->
 
@@ -80,21 +83,25 @@ Intermediate
 
 **Automation needed:** Yes
 
-- GitOps-based pre-deployment of AI Quickstart RAG, AI Quickstart IT Self Service, and AI Quickstart PPE Compliance Monitor into each tenant namespace ahead of the session (author is automating this via GitOps)
+- RAG: GitOps-based pre-deployment into tenant namespace `user-{{ guid }}-rag` (in place and working)
+- IT Self Service: MakeOps deploy (`quickstart_deploy_via_make`, `INSTALL_MODE=demo`) into tenant namespace `user-{{ guid }}-it-selfsvc` (wired, pending agnosticv PR #28533 merge)
+- PPE Compliance Monitor: TBD (on hold)
 - Provision Red Hat OpenShift AI operator and base namespaces/projects ahead of the session
 
 ## Infrastructure Requirements
 
 - **Cloud provider:** CNV
 - **Cluster type:** Multinode (Sandbox API, Cluster/Tenant model — one shared cluster per event instance, each SA gets an isolated tenant namespace)
-- **OCP version:** 4.21
-- **Topology:** Shared-cluster — 12 concurrent tenants per cluster, 6–8 clusters planned for the RH1 event
-- **Sizing:** 3 control plane (16 vCPU, 64GB RAM each); 6 workers (16 vCPU, 64GB RAM, 200GB disk each) — estimate, to be validated by infra review
-- **Automation approach:** GitOps, pre-deploying all three QuickStarts per tenant namespace ahead of the session (author-owned automation, in progress)
-- **AI/MaaS:** MaaS, open-source model tier (via Red Hat Developer Playground MaaS)
+- **OCP version:** 4.20
+- **Topology:** Shared-cluster — up to 15 concurrent tenants per cluster (per `max_placements`)
+- **Sizing:** 3 control plane (16 vCPU, 64GB RAM each); 2 workers (8 vCPU, 16GB RAM, 200GB disk each)
+- **Shared CRQ:** 52 CPU / 80Gi memory / 112Gi storage (sum of RAG + IT Self Service tenants)
+- **Automation approach:** RAG via GitOps, IT Self Service via MakeOps — both pre-deploying per tenant namespace ahead of the session
+- **AI/MaaS:** MaaS, open-source model tier (via Red Hat Developer Playground MaaS); shared `llama-scout-17b` model + LiteLLM virtual key for both apps
 - **External services:** github.com, quay.io, Red Hat Developer Playground MaaS (model access, API key, subscription)
 - **AAP version:** N/A — AAP not in products
 - **Non-GA products:** None flagged yet — the three featured QuickStarts are moving to production as of this revision; will revisit closer to the event
+- **AgnosticV CIs:** `rh1-2027/lb2142-ai-quickstarts-cluster` (cluster), `rh1-2027/lb2142-ai-quickstarts-tenant` (tenant)
 
 <!-- Not all fields must be known at intake. "TBD, estimating ~X" is fine. -->
 
