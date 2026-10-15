@@ -32,19 +32,19 @@ spec:
     duration_min: 15
     status: in_progress
   - id: module-02
-    title: "AI Quickstart RAG \u2014 Running the Demo"
+    title: "AI Quickstart RAG — Running the Demo"
     duration_min: 20
     status: in_progress
   - id: module-03
-    title: "AI Quickstart RAG \u2014 Selling the Agentic Story"
+    title: "AI Quickstart RAG — Selling the Agentic Story"
     duration_min: 20
     status: in_progress
   - id: module-04
-    title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
+    title: "AI Quickstart IT Self Service — Selling the Demo"
     duration_min: 20
     status: in_progress
   - id: module-05
-    title: "AI Quickstart PPE Compliance Monitor \u2014 Selling the Demo"
+    title: "AI Quickstart PPE Compliance Monitor — Selling the Demo"
     duration_min: 20
     status: not_started
   - id: module-06
@@ -55,15 +55,15 @@ spec:
     platform: ocp
     topology: shared-cluster
     cloud_provider: cnv
-    max_concurrent_users: 12
-    ocp_version: '4.21'
+    max_concurrent_users: 15
+    ocp_version: '4.20'
     cluster_type: multinode
     control_plane_instance_count: 3
     control_plane_cpu: 16
     control_plane_ram_gb: 64
-    worker_count: 6
-    worker_cpu: 16
-    worker_ram_gb: 64
+    worker_count: 2
+    worker_cpu: 8
+    worker_ram_gb: 16
     worker_disk_gb: 200
     vms_per_student: []
     aap_version: ''
@@ -90,7 +90,7 @@ tracking:
 approval_checklist:
   content:
     prerequisites_verifiable: false
-    assessment_strategy: "Trust-based \u2014 no automated solve/validate checks (classic\
+    assessment_strategy: "Trust-based — no automated solve/validate checks (classic\
       \ Showroom lab). Participants complete each module's hands-on steps and can\
       \ demo the resulting QuickStart deployments live."
     catalog_gap: No existing catalog item covers the Red Hat QuickStarts catalog itself,
@@ -102,8 +102,8 @@ approval_checklist:
     design_overview: "This lab equips intermediate Red Hat Solution Architects to\
       \ sell with AI Quickstarts. Participants learn what a QuickStart is and how\
       \ to navigate the catalog to match customer use cases, then walk through three\
-      \ pre-deployed QuickStarts \u2014 AI Quickstart RAG, AI Quickstart IT Self Service,\
-      \ and AI Quickstart PPE Compliance Monitor \u2014 learning how to run and narrate\
+      \ pre-deployed QuickStarts — AI Quickstart RAG, AI Quickstart IT Self Service,\
+      \ and AI Quickstart PPE Compliance Monitor — learning how to run and narrate\
       \ each as a customer-facing demo. An optional stretch module covers deploying\
       \ a QuickStart end-to-end for SAs with time remaining."
     module_summaries:
@@ -113,25 +113,25 @@ approval_checklist:
         is, the problem it solves, and a guided tour of the QuickStarts catalog
         (docs.redhat.com/en/learn/ai-quickstarts) for matching a QuickStart to a
         customer use case.
-    - title: "AI Quickstart RAG \u2014 Running the Demo"
+    - title: "AI Quickstart RAG — Running the Demo"
       overview: Flagship QuickStart, part 1 of 2. Participants use an already-deployed
         AI Quickstart RAG instance via the RAG UI tab, framing the FantaCo enterprise
         use case and running the core grounded-answers demo (knowledge bases, direct
         chat with source citations). Adapted from the upstream showroom-ai-quickstart-rag
         lab, re-slanted toward sales value over technical depth.
-    - title: "AI Quickstart RAG \u2014 Selling the Agentic Story"
+    - title: "AI Quickstart RAG — Selling the Agentic Story"
       overview: Flagship QuickStart, part 2 of 2. Participants run the agentic RAG
         and live web-search demo (the "Super Bowl 2025" moment showing live tool
         calls vs stale training data), then practice the customer sales narrative and
         talking points that tie the demo back to Red Hat OpenShift AI.
-    - title: "AI Quickstart IT Self Service \u2014 Selling the Demo"
+    - title: "AI Quickstart IT Self Service — Selling the Demo"
       overview: "Planned (not yet written). Grounded on rh-ai-quickstart/it-self-service-agent
         (laptop-refresh self-service agent), adapting the existing rhpds/showroom-ai-quickstart-it-self-service-agent
         lab and its ai-qs-it-self-service-tenant AgnosticV tenant. Demo runs over a
         test-email (Greenmail) Webmail tab; must be pre-warmed and tightly scripted
-        to hide 10\u201330s LLM latency, with the oc/pods page cut. Chosen over
+        to hide 10–30s LLM latency, with the oc/pods page cut. Chosen over
         speeding-up-ticket-resolution for existing assets despite a weaker demo surface."
-    - title: "AI Quickstart PPE Compliance Monitor \u2014 Selling the Demo"
+    - title: "AI Quickstart PPE Compliance Monitor — Selling the Demo"
       overview: "Planned (not yet written). Grounded on rh-ai-quickstart/multimodal-compliance-monitor,
         adapting the existing rh-ai-qs-showroom/showroom-ai-quickstart-multimodal-monitor
         lab. The most visual demo in the lab (live bounding-box detection on a seeded
