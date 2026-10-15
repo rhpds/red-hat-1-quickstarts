@@ -66,6 +66,9 @@ spec:
     worker_ram_gb: 16
     worker_disk_gb: 200
     vms_per_student: []
+    products:
+    - Red Hat OpenShift Container Platform 4.20
+    - Red Hat OpenShift AI (stable-3.4)
     aap_version: ''
     ai_requirement: maas
     ai_model_tier: open-source
@@ -121,7 +124,7 @@ approval_checklist:
         lab, re-slanted toward sales value over technical depth.
     - title: "AI Quickstart RAG — Selling the Agentic Story"
       overview: Flagship QuickStart, part 2 of 2. Participants run the agentic RAG
-        and live web-search demo (the "Super Bowl 2025" moment showing live tool
+        and live web-search demo (the “Super Bowl 2025” moment showing live tool
         calls vs stale training data), then practice the customer sales narrative and
         talking points that tie the demo back to Red Hat OpenShift AI.
     - title: "AI Quickstart IT Self Service — Selling the Demo"

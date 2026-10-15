@@ -40,10 +40,7 @@ Lab (hands-on)
 ## Products & Technologies
 
 - Red Hat OpenShift Container Platform 4.20
-- Red Hat OpenShift AI (stable-2.25; pending upgrade to stable-3.5 via agnosticv PR #28533)
-- AI Quickstart RAG
-- AI Quickstart IT Self Service
-- AI Quickstart PPE Compliance Monitor
+- Red Hat OpenShift AI (stable-3.4)
 
 <!-- Use official names: "Red Hat OpenShift", not "OpenShift". List upstream projects separately. -->
 
