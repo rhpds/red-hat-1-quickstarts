@@ -1,0 +1,8 @@
+{{- if .Values.requestManagement.enabled }}
+🚀 Self-Service Agent with Request Management Layer has been deployed!
+
+## Services:
+- **Request Manager**: {{ include "self-service-agent.fullname" . }}-request-manager.{{ .Release.Namespace }}.svc.cluster.local
+- **Integration Dispatcher**: {{ include "self-service-agent.fullname" . }}-integration-dispatcher.{{ .Release.Namespace }}.svc.cluster.local
+
+{{- end }}

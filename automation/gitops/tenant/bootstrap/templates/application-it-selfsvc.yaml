@@ -1,0 +1,56 @@
+{{- $app := index .Values "it-selfsvc" -}}
+{{- if $app }}
+{{- $config := $app.model | default dict -}}
+{{- $git := $app.git | default dict -}}
+{{- $model := required "it-selfsvc.model.id is required" $config.id -}}
+{{- $provider := $config.name | default $model -}}
+{{- $url := required "it-selfsvc.model.url is required" $config.url -}}
+{{- $token := required "it-selfsvc.model.apiToken is required" $config.apiToken -}}
+{{- $namespace := required "it-selfsvc.namespace is required" $app.namespace -}}
+{{- $modelConfig := dict "enabled" true "id" $model "url" $url "maxTokens" 2048 "apiToken" "${env.SELFSVC_LLM_API_TOKEN}" -}}
+{{- $snowEnv := dict "SERVICENOW_LAPTOP_REFRESH_ID" "mock_laptop_refresh_id" "SERVICENOW_LAPTOP_AVOID_DUPLICATES" "false" "SERVICENOW_LAPTOP_REQUEST_LIMITS" "" -}}
+{{- $snowSecrets := dict "SERVICENOW_INSTANCE_URL" (dict "name" "self-service-agent-servicenow-credentials" "key" "servicenow-instance-url") -}}
+{{- $defaults := dict
+  "llm-service" (dict "enabled" false)
+  "global" (dict "models" (dict $provider $modelConfig))
+  "llama-stack" (dict "secrets" (dict "SELFSVC_LLM_API_TOKEN" $token))
+  "pgvector" (dict "secret" (dict "user" "postgres" "password" "rag_password" "dbname" "rag_blueprint"))
+  "mcp-servers" (dict "mcp-servers" (dict "self-service-agent-snow" (dict "env" $snowEnv "envSecrets" $snowSecrets)))
+  "security" (dict "email" (dict "smtpHost" (printf "test-email-server-smtp.%s.svc.cluster.local" $namespace) "imapHost" (printf "test-email-server-imap.%s.svc.cluster.local" $namespace)))
+  "requestManagement" (dict "integrations" (dict "slack" (dict "enabled" false)) "agentService" (dict "promptOverrides" (dict "lg-prompt-laptop-refresh" "/app/agent-service/config/lg-prompts/lg-prompt-small-scout.yaml"))) -}}
+{{- $values := mustMergeOverwrite $defaults ($app.values | default dict) -}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ printf "it-selfsvc-%s" .Values.tenant.name | quote }}
+  namespace: {{ .Values.gitops.namespace | quote }}
+spec:
+  project: default
+  source:
+    repoURL: {{ $git.url | default "https://github.com/rhpds/red-hat-1-quickstarts.git" | quote }}
+    targetRevision: {{ $git.revision | default "main" | quote }}
+    path: automation/gitops/it-selfsvc/chart
+    helm:
+      releaseName: self-service-agent
+      valueFiles:
+        - values-test.yaml
+        - values-demo.yaml
+      values: |
+{{ toYaml $values | indent 8 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $namespace | quote }}
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 30
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

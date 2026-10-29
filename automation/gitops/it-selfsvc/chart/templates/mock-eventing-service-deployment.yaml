@@ -1,0 +1,118 @@
+{{- if and .Values.requestManagement.enabled (not .Values.requestManagement.knative.eventing.enabled) .Values.requestManagement.knative.mockEventing.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "self-service-agent.fullname" . }}-mock-eventing
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "self-service-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-eventing
+spec:
+  replicas: {{ .Values.requestManagement.knative.mockEventing.replicas }}
+  selector:
+    matchLabels:
+      {{- include "self-service-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mock-eventing
+  template:
+    metadata:
+      labels:
+        {{- include "self-service-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mock-eventing
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: mock-eventing-service
+        image: "{{ .Values.image.registry }}/{{ .Values.image.mockEventing }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8080"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: LOG_LEVEL
+          value: {{ .Values.requestManagement.knative.mockEventing.logLevel | default "INFO" | quote }}
+        {{- if .Values.requestManagement.knative.mockEventing.uvicornWorkers }}
+        - name: UVICORN_WORKERS
+          value: {{ .Values.requestManagement.knative.mockEventing.uvicornWorkers | quote }}
+        {{- end }}
+        {{- if .Values.otelExporter }}
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: {{ .Values.otelExporter }}
+        {{- end }}
+        {{- if .Values.requestManagement.knative.mockEventing.resources }}
+        resources:
+          {{- toYaml .Values.requestManagement.knative.mockEventing.resources | nindent 10 }}
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        {{- if .Values.requestManagement.knative.mockEventing.healthChecks }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: {{ .Values.requestManagement.knative.mockEventing.healthChecks.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.requestManagement.knative.mockEventing.healthChecks.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.requestManagement.knative.mockEventing.healthChecks.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.requestManagement.knative.mockEventing.healthChecks.livenessProbe.failureThreshold }}
+          successThreshold: {{ .Values.requestManagement.knative.mockEventing.healthChecks.livenessProbe.successThreshold }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: {{ .Values.requestManagement.knative.mockEventing.healthChecks.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.requestManagement.knative.mockEventing.healthChecks.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.requestManagement.knative.mockEventing.healthChecks.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.requestManagement.knative.mockEventing.healthChecks.readinessProbe.failureThreshold }}
+          successThreshold: {{ .Values.requestManagement.knative.mockEventing.healthChecks.readinessProbe.successThreshold }}
+        {{- else }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "self-service-agent.fullname" . }}-mock-eventing
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "self-service-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-eventing
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "self-service-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-eventing
+{{- end }}

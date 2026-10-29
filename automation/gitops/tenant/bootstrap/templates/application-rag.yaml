@@ -3,7 +3,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.tenant.name }}
+  name: tenant-{{ .Values.tenant.name }}
   namespace: {{ .Values.gitops.namespace }}
 spec:
   project: default
@@ -17,6 +17,20 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: '{{ .Values.rag.namespace }}'
+  ignoreDifferences:
+    - group: route.openshift.io
+      kind: Route
+      jsonPointers:
+        - /spec/host
+        - /spec/alternateBackends
+    - group: kubeflow.org
+      kind: Notebook
+      name: rag-pipeline-notebook
+      jqPathExpressions:
+        - '.spec.template.spec.containers[].env[] | select(.name == "PIP_CERT" or .name == "REQUESTS_CA_BUNDLE" or .name == "SSL_CERT_FILE" or .name == "PIPELINES_SSL_SA_CERTS" or .name == "GIT_SSL_CAINFO")'
+        - '.spec.template.spec.containers[].volumeMounts[] | select(.name == "trusted-ca")'
+        - '.spec.template.spec.volumes[] | select(.name == "trusted-ca")'
+        - '.spec.template.spec.initContainers[] | select(.name == "clone-notebook-repo") | .resources'
   syncPolicy:
     automated:
       prune: false

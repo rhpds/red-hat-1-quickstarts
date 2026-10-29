@@ -1,0 +1,570 @@
+{{/*
+Environment variable helpers for consistent env var generation across Knative Services and Deployments
+*/}}
+
+{{/*
+Generate database environment variables from pgvector secret
+*/}}
+{{- define "self-service-agent.dbEnvVars" -}}
+{{/* Database Configuration */}}
+- name: POSTGRES_HOST
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: host
+- name: POSTGRES_PORT
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: port
+- name: POSTGRES_DB
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: dbname
+- name: POSTGRES_USER
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: user
+- name: POSTGRES_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: password
+{{/* Database Performance Configuration - unified pools, max_connections=200 */}}
+- name: DB_POOL_SIZE
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.poolSize | default "8" | quote }}{{ else }}"8"{{ end }}
+- name: DB_MAX_OVERFLOW
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.maxOverflow | default "8" | quote }}{{ else }}"8"{{ end }}
+- name: DB_POOL_TIMEOUT
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.poolTimeout | default "30" | quote }}{{ else }}"30"{{ end }}
+- name: DB_POOL_RECYCLE
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.poolRecycle | default "3600" | quote }}{{ else }}"3600"{{ end }}
+- name: DB_STATEMENT_TIMEOUT
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.statementTimeout | default "30000" | quote }}{{ else }}"30000"{{ end }}
+- name: DB_IDLE_TRANSACTION_TIMEOUT
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.idleTransactionTimeout | default "300000" | quote }}{{ else }}"300000"{{ end }}
+{{/* Sync Connection Pool (PostgresSaver/LangGraph) */}}
+- name: DB_SYNC_POOL_MIN_SIZE
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.syncPoolMinSize | default "1" | quote }}{{ else }}"1"{{ end }}
+- name: DB_SYNC_POOL_MAX_SIZE
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.syncPoolMaxSize | default "5" | quote }}{{ else }}"5"{{ end }}
+- name: DB_SYNC_POOL_TIMEOUT
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.syncPoolTimeout | default "30" | quote }}{{ else }}"30"{{ end }}
+{{- end }}
+
+{{/*
+Database env vars WITHOUT DB_STATEMENT_TIMEOUT (request-manager adds its own override)
+*/}}
+{{- define "self-service-agent.dbEnvVarsNoStatementTimeout" -}}
+{{/* Database Configuration */}}
+- name: POSTGRES_HOST
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: host
+- name: POSTGRES_PORT
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: port
+- name: POSTGRES_DB
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: dbname
+- name: POSTGRES_USER
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: user
+- name: POSTGRES_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: pgvector
+      key: password
+{{/* Database Performance (no DB_STATEMENT_TIMEOUT - request-manager overrides).
+     DB_POOL_SIZE/DB_MAX_OVERFLOW: prefer requestManager.database override when set. */}}
+- name: DB_POOL_SIZE
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "database") (hasKey .Values.requestManagement.requestManager.database "poolSize") }}{{ .Values.requestManagement.requestManager.database.poolSize | quote }}{{ else if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.poolSize | default "8" | quote }}{{ else }}"8"{{ end }}
+- name: DB_MAX_OVERFLOW
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "database") (hasKey .Values.requestManagement.requestManager.database "maxOverflow") }}{{ .Values.requestManagement.requestManager.database.maxOverflow | quote }}{{ else if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.maxOverflow | default "8" | quote }}{{ else }}"8"{{ end }}
+- name: DB_POOL_TIMEOUT
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.poolTimeout | default "30" | quote }}{{ else }}"30"{{ end }}
+- name: DB_POOL_RECYCLE
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.poolRecycle | default "3600" | quote }}{{ else }}"3600"{{ end }}
+- name: DB_IDLE_TRANSACTION_TIMEOUT
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.idleTransactionTimeout | default "300000" | quote }}{{ else }}"300000"{{ end }}
+{{/* Sync Connection Pool (PostgresSaver/LangGraph) */}}
+- name: DB_SYNC_POOL_MIN_SIZE
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.syncPoolMinSize | default "1" | quote }}{{ else }}"1"{{ end }}
+- name: DB_SYNC_POOL_MAX_SIZE
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.syncPoolMaxSize | default "5" | quote }}{{ else }}"5"{{ end }}
+- name: DB_SYNC_POOL_TIMEOUT
+  value: {{ if hasKey .Values.requestManagement "database" }}{{ .Values.requestManagement.database.syncPoolTimeout | default "30" | quote }}{{ else }}"30"{{ end }}
+{{- end }}
+
+{{/*
+Generate common environment variables for all services
+*/}}
+{{- define "self-service-agent.commonEnvVars" -}}
+{{/* Application Configuration */}}
+- name: LOG_LEVEL
+  value: {{ .Values.logLevel | default "INFO" | quote }}
+- name: SQL_DEBUG
+  value: "false"
+- name: EXPECTED_MIGRATION_VERSION
+  value: {{ .Values.database.expectedMigrationVersion | default "003" | quote }}
+{{/* Eventing Configuration - Always enabled (mock or full Knative) */}}
+- name: BROKER_URL
+  value: {{ if .Values.requestManagement.knative.eventing.enabled }}{{ printf "%s/%s/%s" .Values.requestManagement.knative.broker.url .Release.Namespace .Values.requestManagement.knative.broker.name | quote }}{{ else }}{{ printf "http://%s-mock-eventing.%s.svc.cluster.local:8080/%s/%s" (include "self-service-agent.fullname" .) .Release.Namespace .Release.Namespace .Values.requestManagement.knative.broker.name | quote }}{{ end }}
+{{/* Server Configuration */}}
+- name: PORT
+  value: "8080"
+- name: HOST
+  value: "0.0.0.0"
+{{- end }}
+
+{{/*
+Generate Request Manager specific environment variables
+*/}}
+{{- define "self-service-agent.requestManagerEnvVars" -}}
+{{/* Event Processing Configuration */}}
+- name: EVENT_MAX_RETRIES
+  value: "3"
+- name: EVENT_BASE_DELAY
+  value: "1.0"
+{{/* Integration API Keys */}}
+- name: SNOW_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: api-keys
+      key: snow-integration
+      optional: true
+- name: HR_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: api-keys
+      key: hr-system
+      optional: true
+- name: MONITORING_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: api-keys
+      key: monitoring-system
+      optional: true
+{{/* JWT Authentication Configuration */}}
+- name: JWT_ENABLED
+  value: {{ .Values.security.jwt.enabled | default false | quote }}
+- name: JWT_ISSUERS
+  value: {{ .Values.security.jwt.issuers | toJson | quote }}
+- name: JWT_VERIFY_SIGNATURE
+  value: {{ .Values.security.jwt.validation.verifySignature | default true | quote }}
+- name: JWT_VERIFY_EXPIRATION
+  value: {{ .Values.security.jwt.validation.verifyExpiration | default true | quote }}
+- name: JWT_VERIFY_AUDIENCE
+  value: {{ .Values.security.jwt.validation.verifyAudience | default true | quote }}
+- name: JWT_VERIFY_ISSUER
+  value: {{ .Values.security.jwt.validation.verifyIssuer | default true | quote }}
+- name: JWT_LEEWAY
+  value: {{ .Values.security.jwt.validation.leeway | default 60 | quote }}
+{{/* API Key Authentication Configuration */}}
+- name: WEB_API_KEYS
+  value: {{ .Values.security.apiKeys.webKeys | toJson | quote }}
+{{/* Agent Service Configuration */}}
+- name: AGENT_SERVICE_HOST
+  value: "{{ include "self-service-agent.fullname" . }}-agent-service"
+- name: AGENT_SERVICE_PORT
+  value: "80"
+- name: AGENT_TIMEOUT
+  value: {{ if hasKey .Values "agent" }}{{ .Values.agent.timeout | default "120" | quote }}{{ else }}"120"{{ end }}
+{{/* Session Management Configuration */}}
+- name: SESSION_PER_INTEGRATION_TYPE
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessions") (hasKey .Values.requestManagement.requestManager.sessions "perIntegrationType") }}{{ .Values.requestManagement.requestManager.sessions.perIntegrationType | quote }}{{ else }}"false"{{ end }}
+- name: SESSION_TIMEOUT_HOURS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessions") (hasKey .Values.requestManagement.requestManager.sessions "timeoutHours") }}{{ .Values.requestManagement.requestManager.sessions.timeoutHours | quote }}{{ else }}"336"{{ end }}
+- name: SESSION_CLEANUP_INTERVAL_HOURS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessions") (hasKey .Values.requestManagement.requestManager.sessions "cleanupIntervalHours") }}{{ .Values.requestManagement.requestManager.sessions.cleanupIntervalHours | quote }}{{ else }}"24"{{ end }}
+- name: INACTIVE_SESSION_RETENTION_DAYS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessions") (hasKey .Values.requestManagement.requestManager.sessions "inactiveRetentionDays") }}{{ .Values.requestManagement.requestManager.sessions.inactiveRetentionDays | quote }}{{ else }}"30"{{ end }}
+- name: USE_SESSION_EVENTING
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessions") (hasKey .Values.requestManagement.requestManager.sessions "useSessionEventing") }}{{ .Values.requestManagement.requestManager.sessions.useSessionEventing | quote }}{{ else }}"true"{{ end }}
+{{/* Session serialization (one request in-flight per session, FIFO, reclaim) */}}
+- name: SESSION_LOCK_WAIT_TIMEOUT
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "lockWaitTimeoutSeconds") }}{{ .Values.requestManagement.requestManager.sessionSerialization.lockWaitTimeoutSeconds | quote }}{{ else }}"180"{{ end }}
+- name: SESSION_LOCK_POLL_INTERVAL_SECONDS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "lockPollIntervalSeconds") }}{{ .Values.requestManagement.requestManager.sessionSerialization.lockPollIntervalSeconds | quote }}{{ else }}"0.05"{{ end }}
+{{/* DB_STATEMENT_TIMEOUT override: must exceed SESSION_LOCK_WAIT_TIMEOUT so lock operations are not cancelled (value in ms) */}}
+- name: DB_STATEMENT_TIMEOUT
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "lockWaitTimeoutSeconds") }}{{ mul (.Values.requestManagement.requestManager.sessionSerialization.lockWaitTimeoutSeconds | int) 1000 | quote }}{{ else }}"180000"{{ end }}
+- name: SESSION_LOCK_STUCK_BUFFER_SECONDS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "stuckBufferSeconds") }}{{ .Values.requestManagement.requestManager.sessionSerialization.stuckBufferSeconds | quote }}{{ else }}"30"{{ end }}
+- name: POD_HEARTBEAT_INTERVAL_SECONDS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "heartbeatIntervalSeconds") }}{{ .Values.requestManagement.requestManager.sessionSerialization.heartbeatIntervalSeconds | quote }}{{ else }}"15"{{ end }}
+- name: POD_HEARTBEAT_GRACE_SECONDS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "heartbeatGraceSeconds") }}{{ .Values.requestManagement.requestManager.sessionSerialization.heartbeatGraceSeconds | quote }}{{ else }}"30"{{ end }}
+- name: BACKGROUND_RECLAIM_INTERVAL_SECONDS
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "backgroundReclaimIntervalSeconds") }}{{ .Values.requestManagement.requestManager.sessionSerialization.backgroundReclaimIntervalSeconds | quote }}{{ else }}"45"{{ end }}
+- name: RECLAIM_ACTION
+  value: {{ if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "sessionSerialization") (hasKey .Values.requestManagement.requestManager.sessionSerialization "reclaimAction") }}{{ .Values.requestManagement.requestManager.sessionSerialization.reclaimAction | quote }}{{ else }}"requeue"{{ end }}
+{{/* Channel behavior: Helm partial overrides + optional DB merge at session create */}}
+{{- $cb := dict }}
+{{- if and (hasKey .Values.requestManagement "requestManager") (hasKey .Values.requestManagement.requestManager "channelBehavior") }}
+{{- $cb = .Values.requestManagement.requestManager.channelBehavior }}
+{{- end }}
+{{- if $cb.allowDbOverride }}
+- name: CHANNEL_BEHAVIOR_ALLOW_DB_OVERRIDE
+  value: {{ $cb.allowDbOverride | quote }}
+{{- end }}
+{{- if $cb.overrides }}
+- name: CHANNEL_BEHAVIOR_OVERRIDES
+  value: {{ $cb.overrides | toJson | quote }}
+{{- end }}
+{{/* DB pool overrides are applied in dbEnvVarsNoStatementTimeout (single source to avoid duplicate env vars) */}}
+{{- include "self-service-agent.sessionAgentRoutingEnvVars" . }}
+{{/* Zammad REST: same credentials secret as integration-dispatcher/MCP (oc exec ticket harness, optional future RM features) */}}
+{{- if .Values.ticketingZammad.enabled }}
+- name: ZAMMAD_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-zammad-credentials
+      key: zammad-url
+- name: ZAMMAD_HTTP_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-zammad-credentials
+      key: zammad-http-token
+{{- end }}
+{{- end }}
+
+{{/* DEFAULT_AGENT_ID — global router and default entry; per-channel entry from CHANNEL_REGISTRY (Helm channelBehavior.overrides / optional DB when allowDbOverride) */}}
+{{- define "self-service-agent.sessionAgentRoutingEnvVars" -}}
+{{- $agent := .Values.agent | default dict }}
+- name: DEFAULT_AGENT_ID
+  value: {{ $agent.defaultAgentId | default "routing-agent" | quote }}
+{{- end }}
+
+{{/*
+Generate Agent Service specific environment variables
+*/}}
+{{- define "self-service-agent.agentServiceEnvVars" -}}
+{{/* LangFuse Observability Configuration */}}
+{{- if .Values.langfuse.enabled }}
+- name: LANGFUSE_ENABLED
+  value: "true"
+- name: LANGFUSE_PUBLIC_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-langfuse-api-keys
+      key: public-key
+- name: LANGFUSE_SECRET_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-langfuse-api-keys
+      key: secret-key
+- name: LANGFUSE_HOST
+  value: {{ printf "http://%s-langfuse:%d" (include "self-service-agent.fullname" .) (.Values.langfuse.service.port | int) | quote }}
+{{- else }}
+- name: LANGFUSE_ENABLED
+  value: "false"
+{{- end }}
+{{/* LLM Service Configuration */}}
+- name: LLAMA_STACK_URL
+  value: {{ .Values.llama_stack_url | default "http://llamastack:8321" | quote }}
+{{/* LlamaStack OpenAI Client Configuration */}}
+{{- if hasKey .Values "llamastack" }}
+{{- if .Values.llamastack.port }}
+- name: LLAMASTACK_CLIENT_PORT
+  value: {{ .Values.llamastack.port | quote }}
+{{- end }}
+{{- if .Values.llamastack.apiKey }}
+- name: LLAMASTACK_API_KEY
+  value: {{ .Values.llamastack.apiKey | quote }}
+{{- end }}
+{{- if .Values.llamastack.openaiBasePath }}
+- name: LLAMASTACK_OPENAI_BASE_PATH
+  value: {{ .Values.llamastack.openaiBasePath | quote }}
+{{- end }}
+{{- if .Values.llamastack.timeout }}
+- name: LLAMASTACK_TIMEOUT
+  value: {{ .Values.llamastack.timeout | quote }}
+{{- end }}
+{{- end }}
+{{/* Agent Configuration */}}
+{{- include "self-service-agent.sessionAgentRoutingEnvVars" . }}
+- name: AGENT_TIMEOUT
+  value: {{ if hasKey .Values "agent" }}{{ .Values.agent.timeout | default "120" | quote }}{{ else }}"120"{{ end }}
+- name: ALWAYS_REFRESH_AGENT_MAPPING
+  value: {{ if hasKey .Values "agent" }}{{ .Values.agent.alwaysRefreshMapping | default "true" | quote }}{{ else }}"true"{{ end }}
+{{/* LangGraph Prompt Configuration Overrides */}}
+{{- if .Values.requestManagement.agentService.promptOverrides }}
+{{- range $key, $value := .Values.requestManagement.agentService.promptOverrides }}
+- name: {{ $key | upper | replace "-" "_" }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{/* Safety/Shield Configuration */}}
+{{- $safetyModel := "" }}
+{{- $safetyUrl := "" }}
+{{/* Check if safety is configured in values.yaml */}}
+{{- if hasKey .Values "safety" }}
+{{- if .Values.safety.model }}
+{{- $safetyModel = .Values.safety.model }}
+{{- end }}
+{{- if .Values.safety.url }}
+{{- $safetyUrl = .Values.safety.url }}
+{{- end }}
+{{- end }}
+{{/* Check for enabled models in global.models (from Makefile) */}}
+{{- if hasKey .Values "global" }}
+{{- if hasKey .Values.global "models" }}
+{{- range $modelName, $modelConfig := .Values.global.models }}
+{{- if and (hasKey $modelConfig "enabled") $modelConfig.enabled (hasKey $modelConfig "url") }}
+{{/* Check if this looks like a safety/guard model */}}
+{{- if or (contains "guard" ($modelName | lower)) (contains "safety" ($modelName | lower)) }}
+{{- $safetyModel = $modelName }}
+{{- $safetyUrl = $modelConfig.url }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{/* Only set environment variables if both model and URL are configured */}}
+{{- if and $safetyModel $safetyUrl }}
+- name: SAFETY
+  value: {{ $safetyModel | quote }}
+- name: SAFETY_URL
+  value: {{ $safetyUrl | quote }}
+{{- end }}
+{{/* NeMo Guardrails Configuration */}}
+{{- if and (hasKey .Values "nemoGuardrails") .Values.nemoGuardrails.enabled }}
+- name: USE_NEMO_GUARDRAILS
+  value: "true"
+{{- end }}
+{{/* Fault Injection Configuration (for testing) */}}
+{{- if hasKey .Values.requestManagement.agentService "faultInjection" }}
+- name: FAULT_INJECTION_ENABLED
+  value: {{ .Values.requestManagement.agentService.faultInjection.enabled | default false | ternary "1" "0" | quote }}
+- name: FAULT_INJECTION_RATE
+  value: {{ .Values.requestManagement.agentService.faultInjection.rate | default "0.1" | quote }}
+- name: FAULT_INJECTION_ERROR_TYPE
+  value: {{ .Values.requestManagement.agentService.faultInjection.errorType | default "timeout" | quote }}
+{{- if .Values.requestManagement.agentService.faultInjection.maxRetries }}
+- name: FAULT_INJECTION_MAX_RETRIES
+  value: {{ .Values.requestManagement.agentService.faultInjection.maxRetries | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Generate Integration Dispatcher specific environment variables
+*/}}
+{{- define "self-service-agent.integrationDispatcherEnvVars" -}}
+{{/* Slack Integration Configuration */}}
+- name: SLACK_BOT_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: slack-bot-token
+      optional: true
+- name: SLACK_SIGNING_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: slack-signing-secret
+      optional: true
+{{/* Zammad trigger webhook — dispatcher requires non-empty secret for HMAC (401 if unset/empty) */}}
+- name: ZAMMAD_WEBHOOK_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: zammad-webhook-secret
+      optional: true
+{{- $tz := .Values.ticketingZammad | default dict }}
+{{- $lz := .Values.zammad | default dict }}
+{{- $aiAgent := $tz.aiAgentUserId | default $lz.aiAgentUserId | default "" }}
+{{- if $aiAgent }}
+- name: ZAMMAD_AI_AGENT_USER_ID
+  value: {{ $aiAgent | quote }}
+{{- end }}
+{{/* SMTP Configuration */}}
+- name: SMTP_HOST
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: smtp-host
+      optional: true
+- name: SMTP_PORT
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: smtp-port
+      optional: true
+- name: SMTP_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: smtp-username
+      optional: true
+- name: SMTP_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: smtp-password
+      optional: true
+- name: SMTP_USE_TLS
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: smtp-use-tls
+      optional: true
+- name: FROM_EMAIL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: from-email
+      optional: true
+- name: FROM_NAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: from-name
+      optional: true
+{{/* IMAP Configuration (receiving emails) - reuses SMTP credentials if not set */}}
+- name: IMAP_HOST
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-host
+      optional: true
+- name: IMAP_PORT
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-port
+      optional: true
+- name: IMAP_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-username
+      optional: true
+- name: IMAP_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-password
+      optional: true
+- name: IMAP_USE_SSL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-use-ssl
+      optional: true
+- name: IMAP_MAILBOX
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-mailbox
+      optional: true
+- name: IMAP_POLL_INTERVAL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-poll-interval
+      optional: true
+- name: IMAP_LEASE_DURATION
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-lease-duration
+      optional: true
+- name: IMAP_LEASE_RENEWAL_INTERVAL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-integration-secrets
+      key: imap-lease-renewal-interval
+      optional: true
+{{/* Test Integration Configuration */}}
+- name: TEST_INTEGRATION_ENABLED
+  value: {{ if hasKey .Values "testIntegrationEnabled" }}{{ .Values.testIntegrationEnabled | quote }}{{ else }}"true"{{ end }}
+{{/* Integration User Defaults Configuration (auto-enabled based on health checks) */}}
+{{- if hasKey .Values.requestManagement "integrations" }}
+{{- if hasKey .Values.requestManagement.integrations "userDefaults" }}
+{{- range $integrationType, $config := .Values.requestManagement.integrations.userDefaults }}
+{{- if hasKey $config "enabled" }}
+- name: INTEGRATION_DEFAULTS_{{ $integrationType }}_ENABLED
+  value: {{ $config.enabled | quote }}
+{{- end }}
+- name: INTEGRATION_DEFAULTS_{{ $integrationType }}_PRIORITY
+  value: {{ $config.priority | default 0 | quote }}
+{{- if hasKey $config "retryCount" }}
+- name: INTEGRATION_DEFAULTS_{{ $integrationType }}_RETRY_COUNT
+  value: {{ $config.retryCount | default 3 | quote }}
+{{- end }}
+{{- if hasKey $config "retryDelaySeconds" }}
+- name: INTEGRATION_DEFAULTS_{{ $integrationType }}_RETRY_DELAY_SECONDS
+  value: {{ $config.retryDelaySeconds | default 60 | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{/* Webhook default URL configuration */}}
+{{- if and (hasKey .Values.requestManagement "integrations") (hasKey .Values.requestManagement.integrations "userDefaults") (hasKey .Values.requestManagement.integrations.userDefaults "WEBHOOK") (hasKey .Values.requestManagement.integrations.userDefaults.WEBHOOK "url") }}
+- name: DEFAULT_WEBHOOK_URL
+  value: {{ .Values.requestManagement.integrations.userDefaults.WEBHOOK.url | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Generate all environment variables for Request Manager
+(uses dbEnvVarsNoStatementTimeout; requestManagerEnvVars adds DB_STATEMENT_TIMEOUT override)
+*/}}
+{{- define "self-service-agent.requestManagerAllEnvVars" -}}
+{{- include "self-service-agent.dbEnvVarsNoStatementTimeout" . }}
+{{- include "self-service-agent.commonEnvVars" . }}
+{{- include "self-service-agent.requestManagerEnvVars" . }}
+{{- end }}
+
+{{/*
+Generate all environment variables for Agent Service
+*/}}
+{{- define "self-service-agent.agentServiceAllEnvVars" -}}
+{{- include "self-service-agent.dbEnvVars" . }}
+{{- include "self-service-agent.commonEnvVars" . }}
+{{- include "self-service-agent.agentServiceEnvVars" . }}
+
+{{/* ServiceNow API key for authentication */}}
+- name: SERVICENOW_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-servicenow-credentials
+      key: servicenow-api-key
+      optional: true
+{{- end }}
+
+{{/*
+Generate all environment variables for Integration Dispatcher
+*/}}
+{{- define "self-service-agent.integrationDispatcherAllEnvVars" -}}
+{{- include "self-service-agent.dbEnvVars" . }}
+{{- include "self-service-agent.commonEnvVars" . }}
+{{- include "self-service-agent.integrationDispatcherEnvVars" . }}
+{{/* Zammad REST posting for customer-visible ticket replies (same secret as Request Manager / MCP) */}}
+{{- if .Values.ticketingZammad.enabled }}
+{{- $tz := .Values.ticketingZammad | default dict }}
+- name: ZAMMAD_TICKET_ARTICLE_FALLBACK_ON_FORBIDDEN
+  value: "true"
+- name: ZAMMAD_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-zammad-credentials
+      key: zammad-url
+- name: ZAMMAD_HTTP_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "self-service-agent.fullname" . }}-zammad-credentials
+      key: zammad-http-token
+{{- end }}
+{{- end }}

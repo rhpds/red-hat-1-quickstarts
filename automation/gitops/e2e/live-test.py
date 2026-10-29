@@ -11,9 +11,21 @@ import urllib.request
 REPO = "https://github.com/rhpds/red-hat-1-quickstarts"
 QUESTION = "What does the employee handbook say about vacation time?"
 
-BACKEND_TEST = r'''
+VALIDATE_STORES = r'''
+def validate_stores(stores, expected):
+    for name in expected:
+        matches = [store for store in stores if store.get("name") == name]
+        if len(matches) != 1:
+            raise ValueError(f"Document collection {name} is missing or duplicated")
+        counts = matches[0].get("file_counts", {})
+        if (counts.get("completed", 0) < 1 or counts.get("failed", 0)
+                or counts.get("cancelled", 0) or counts.get("in_progress", 0)):
+            raise ValueError(f"Document collection {name} has incomplete or failed files: {counts}")
+'''
+
+BACKEND_TEST = VALIDATE_STORES + r'''
 import json, sys, urllib.request
-model, collection, question = sys.argv[1:]
+model, collection, question, expected_stores = sys.argv[1:]
 base = "http://localhost:8321/v1"
 def get(path):
     return json.load(urllib.request.urlopen(base + path, timeout=20))
@@ -23,9 +35,9 @@ def post(path, data):
 models = get("/models")["data"]
 if model not in [m["id"] for m in models]:
     raise RuntimeError("The requested inference model is not registered")
-stores = [s for s in get("/vector_stores")["data"] if s["name"] == collection]
-if len(stores) != 1 or stores[0]["file_counts"]["completed"] < 1:
-    raise RuntimeError("The requested document collection is missing or empty")
+all_stores = get("/vector_stores")["data"]
+validate_stores(all_stores, json.loads(expected_stores))
+stores = [s for s in all_stores if s["name"] == collection]
 results = post("/vector_stores/" + stores[0]["id"] + "/search", {"query": question, "max_num_results": 3})["data"]
 context = "\n".join(c.get("text", "") for result in results for c in result.get("content", []) if isinstance(c, dict))
 if not context:
@@ -45,9 +57,9 @@ def command(args, data=None):
     return result.stdout.strip()
 
 
-def validate_gitops_app(app, name, path, namespace=None, expected_revision=None):
+def validate_gitops_app(app, name, path, namespace=None, expected_revision=None, expected_repo=REPO):
     source = app["spec"]["source"]
-    if source["repoURL"].rstrip("/").removesuffix(".git") != REPO or source["path"].rstrip("/") != path:
+    if source["repoURL"].rstrip("/").removesuffix(".git") != expected_repo.rstrip("/").removesuffix(".git") or source["path"].rstrip("/") != path:
         raise ValueError(f"{name} does not point to the expected repository and path")
     if app.get("status", {}).get("sync", {}).get("status") != "Synced" or app.get("status", {}).get("health", {}).get("status") != "Healthy":
         raise ValueError(f"{name} is not Healthy and Synced")
@@ -90,6 +102,8 @@ def main():
     parser.add_argument("--tenant-app", help="tenant bootstrap Argo CD Application name")
     parser.add_argument("--rag-app", help="child RAG Argo CD Application name")
     parser.add_argument("--expected-revision", help="full Git commit SHA to verify in each GitOps Application")
+    parser.add_argument("--argocd-namespace", default="openshift-gitops", help="namespace containing the Argo CD Applications")
+    parser.add_argument("--expected-repo-url", default=REPO, help="expected GitOps repository URL")
     args = parser.parse_args()
     context = args.context or command(["oc", "config", "current-context"])
     oc = ["oc", "--context", context, "--request-timeout=20s"]
@@ -136,8 +150,8 @@ def main():
                 (args.tenant_app, "automation/gitops/tenant/bootstrap"),
                 (args.rag_app, "automation/gitops/tenant/deploy/helm/rag")]
         for name, path in apps:
-            app = json.loads(command(oc + ["get", "application", name, "-n", "openshift-gitops", "-o", "json"]))
-            source = validate_gitops_app(app, name, path, args.namespace if name == args.rag_app else None, args.expected_revision)
+            app = json.loads(command(oc + ["get", "application", name, "-n", args.argocd_namespace, "-o", "json"]))
+            source = validate_gitops_app(app, name, path, args.namespace if name == args.rag_app else None, args.expected_revision, args.expected_repo_url)
             print(f"GitOps OK: {name} ({source['path']}, revision {app['status']['sync'].get('revision', 'unknown')})", flush=True)
     else:
         print("Helm deployment mode: GitOps provisioning is NOT validated.", flush=True)
@@ -147,8 +161,10 @@ def main():
     print(f"Ingestion OK: latest runs succeeded for {len(names)} pipelines.", flush=True)
     route = json.loads(command(oc + ["get", "route", args.route, "-n", args.namespace, "-o", "json"]))
     ui = "https://" + route["spec"]["host"]
+    collections = sorted(set(([args.collection] if args.pipeline_name else names) + [args.collection]))
     result = command(oc + ["exec", "-i", "-n", args.namespace, "deployment/" + args.llamastack_deployment,
-                           "-c", "llama-stack", "--", "python", "-", model, args.collection, args.question], BACKEND_TEST)
+                           "-c", "llama-stack", "--", "python", "-", model, args.collection, args.question,
+                           json.dumps(collections)], BACKEND_TEST)
     backend = json.loads(result)
     print(f"Backend OK: retrieved {backend['chunks']} chunks and received a model response.", flush=True)
     from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
