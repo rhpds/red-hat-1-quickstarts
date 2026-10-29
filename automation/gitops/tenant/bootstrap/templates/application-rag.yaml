@@ -3,7 +3,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.tenant.name }}
+  name: tenant-{{ .Values.tenant.name }}
   namespace: {{ .Values.gitops.namespace }}
 spec:
   project: default
