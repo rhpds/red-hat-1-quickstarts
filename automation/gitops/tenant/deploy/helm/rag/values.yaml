@@ -1,0 +1,320 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/rh-ai-quickstart/llamastack-dist-ui
+  pullPolicy: Always
+  tag: 0.2.47
+
+service:
+  type: ClusterIP
+  port: 8501
+
+serviceAccount:
+  create: false
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  timeoutSeconds: 15
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 30
+  timeoutSeconds: 15
+
+env:
+  - name: LLAMA_STACK_ENDPOINT
+    value: 'http://llamastack:8321'
+
+volumes:
+  - emptyDir: {}
+    name: dot-streamlit
+
+volumeMounts:
+  - mountPath: /.streamlit
+    name: dot-streamlit
+
+# Common model values for llm-service and llama-stack
+# See format in https://github.com/rh-ai-quickstart/ai-architecture-charts/blob/main/llm-service/helm/values.yaml
+# For e.g., to add a new model add the following block and it will append to the list of models defined in the llm-service
+# 
+# Device Support:
+# - Use DEVICE=cpu for CPU-only deployment
+# - Use DEVICE=gpu for NVIDIA GPU deployment (default)
+# - Use DEVICE=hpu for Intel Gaudi HPU deployment (requires Intel Gaudi drivers and setup)
+# - Use DEVICE=xeon for Intel Xeon CPU deployment (optimized for large CPU instances, works on SPR/EMR/GNR, requires min 16vCPU and 32GB RAM to run efficiently)
+
+# global:
+#   models:
+#     llama-4-scout-17b:
+#       url: "https://llama-4-scout:443/v1"
+#       apiToken: "Paste-your-token-here"
+#       id: "llama-4-scout-17b"
+#       enabled: true
+#     llama-3-2-3b-instruct:
+#       id: meta-llama/Llama-3.2-3B-Instruct
+#       enabled: true
+#       resources:
+#         limits:
+#           nvidia.com/gpu: "1"
+#       tolerations:
+#       - key: "nvidia.com/gpu"
+#         operator: Exists
+#         effect: NoSchedule
+#       args:
+#       - --enable-auto-tool-choice
+#       - --chat-template
+#       - /vllm-workspace/examples/tool_chat_template_llama3.2_json.jinja
+#       - --tool-call-parser
+#       - llama3_json
+#       - --max-model-len
+#       - "30444"
+#     # Example HPU (Intel Gaudi) configuration:
+#     llama-3-2-3b-instruct:
+#       id: meta-llama/Llama-3.2-3B-Instruct
+#       enabled: true
+#       device: "hpu"
+#       accelerators: "1" # Can be omitted, defaults to 1
+#       args:
+#       - --max-model-len
+#       - "14336"
+#       - --max-num-seqs
+#       - "32"
+#     llama-guard-3-8b:
+#       id: meta-llama/Llama-Guard-3-8B
+#       enabled: true
+#       registerShield: true
+#       device: "hpu"    
+#       args:
+#       - --max-model-len
+#       - "14336"
+#       - --max-num-seqs
+#       - "32"
+#     granite-vision-3-2-2b:
+#       id: ibm-granite/granite-vision-3.2-2b
+#       enabled: true
+#       device: "gpu"  # Options: "cpu", "gpu", "hpu"
+#       accelerators: "1"
+#       args:
+#       - --tensor-parallel-size
+#       - "1"
+#       - --max-model-len
+#       - "6144"
+#       - --enable-auto-tool-choice
+#       - --tool-call-parser
+#       - granite
+#     qwen25-vl-7b-instruct-fp8-dynamic:
+#       id: RedHatAI/Qwen2.5-VL-7B-Instruct-FP8-Dynamic
+#       enabled: true      
+#       resources:
+#         limits:
+#           nvidia.com/gpu: "1"
+#       tolerations:
+#       - key: "nvidia.com/gpu"
+#         operator: Exists
+#         effect: NoSchedule
+#       args:
+#       - --distributed-executor-backend=mp
+#       - --dtype=auto
+#       - --max-model-len=8000
+#     # Example Xeon configurations:
+#     llama-3-2-3b-instruct:
+#       id: meta-llama/Llama-3.2-3B-Instruct
+#       enabled: true
+#       device: "xeon"
+#       args:
+#       - --max-model-len
+#       - "14336"
+#       - --max-num-seqs
+#       - "32"
+#     llama-3-1-8b-instruct:
+#       id: meta-llama/Llama-3.1-8B-Instruct
+#       enabled: true
+#       device: "xeon"
+#       args:
+#         - --max-model-len
+#         - "14336"
+#         - --max-num-seqs
+#         - "32"
+#         - --enable-auto-tool-choice
+#         - --chat-template
+#         - /chat-templates/tool_chat_template_llama3.2_json.jinja
+#         - --tool-call-parser
+#         - llama3_json
+global:
+  models: {}
+  mcp-servers: {}
+
+# Hugging Face Token for model downloads
+llm-service:
+  enabled: true
+  secret:
+    hf_token: ""
+    enabled: true
+
+pgvector:
+  enabled: true
+  secret:
+    user: postgres
+    password: rag_password
+    dbname: rag_blueprint
+    host: pgvector
+    port: "5432"
+
+llama-stack:
+  enabled: true
+  fileProcessors:
+    enabled: true
+    providers:
+      - provider_id: pypdf
+        provider_type: inline::pypdf
+
+  secrets:
+    TAVILY_SEARCH_API_KEY: "Paste-your-key-here"
+
+configure-pipeline:
+  enabled: true
+  aws-compatible-storage:
+    enabled: true
+    fullnameOverride: aws-compatible-storage
+    auth:
+      enabled: false
+    route:
+      enabled: false
+    sampleFileUpload:
+      enabled: true
+      bucket: documents
+      urls:
+      - https://raw.githubusercontent.com/rh-ai-quickstart/RAG/refs/heads/main/notebooks/zippity-zoo/Zippity_Zoo_Grand_Invention.pdf
+      - https://raw.githubusercontent.com/rh-ai-quickstart/RAG/refs/heads/main/notebooks/zippity-zoo/Zippity_Zoo_and_the_Town_of_Tumble_Town.pdf
+      - https://raw.githubusercontent.com/rh-ai-quickstart/RAG/refs/heads/main/notebooks/zippity-zoo/Zippity_Zoo_and_the_Town_of_Whispering_Willows.pdf
+  notebook:
+    s3:
+      bucketName: documents
+      region: us-east-1
+
+mcp-servers:
+  enabled: true
+
+
+# Suggested Questions Configuration
+# These questions appear in the chat UI when users select a database
+# The key should match the vector_store_name (identifier) of the database
+suggestedQuestions:
+  hr-vector-db-v1-0:
+    - "What are the health insurance benefits offered?"
+    - "How many vacation days do employees get?"
+    - "What is the parental leave policy?"
+    - "What are the retirement benefits?"
+    - "How do I enroll in benefits?"
+    - "What is the employee assistance program?"
+  
+  legal-vector-db-v1-0:
+    - "What are the key contract terms?"
+    - "What is the liability clause?"
+    - "What are the termination conditions?"
+    - "What are the intellectual property rights?"
+    - "What is the dispute resolution process?"
+    - "What are the compliance requirements?"
+  
+  sales-vector-db-v1-0:
+    - "What is the sales process?"
+    - "How do I qualify leads?"
+    - "What are the pricing strategies?"
+    - "What is the commission structure?"
+    - "How do I handle customer objections?"
+    - "What are the territory assignments?"
+  
+  procurement-vector-db-v1-0:
+    - "What is the procurement process?"
+    - "How do I submit a purchase request?"
+    - "What are the approval requirements?"
+    - "Who are the approved vendors?"
+    - "What is the purchasing policy?"
+    - "How do I track my order?"
+  
+  techsupport-vector-db-v1-0:
+    - "How do I install CloudSync on Mac?"
+    - "How do I install CloudSync on Windows?"
+    - "How do I sync files between devices?"
+    - "How do I troubleshoot CloudSync sync issues?"
+    - "How do I install Linux on TechGear Pro Laptop?"
+    - "Where can I find video drivers for TechGear Pro?"
+
+# Ingestion Pipeline Configuration
+ingestion-pipeline:
+  enabled: true
+  serviceAccount:
+    create: true
+    name: rag-pipeline-notebook
+  pipelines:
+    # GitHub-based pipeline
+    hr-pipeline:
+      enabled: true
+      source: GITHUB
+      embedding_model: "all-MiniLM-L6-v2"
+      name: "hr-vector-db"
+      version: "1.0"
+      vector_store_name: "hr-vector-db-v1-0"
+      GITHUB:
+        url: https://github.com/rh-ai-quickstart/RAG.git
+        path: notebooks/hr
+        token: auth_token
+        branch: main
+
+    legal-pipeline:
+      enabled: true
+      source: GITHUB
+      embedding_model: "all-MiniLM-L6-v2"
+      name: "legal-vector-db"
+      version: "1.0"
+      vector_store_name: "legal-vector-db-v1-0"
+      GITHUB:
+        url: https://github.com/rh-ai-quickstart/RAG.git
+        path: notebooks/legal
+        token: auth_token
+        branch: main
+
+    sales-pipeline:
+      enabled: true
+      source: GITHUB
+      embedding_model: "all-MiniLM-L6-v2"
+      name: "sales-vector-db"
+      version: "1.0"
+      vector_store_name: "sales-vector-db-v1-0"
+      GITHUB:
+        url: https://github.com/rh-ai-quickstart/RAG.git
+        path: notebooks/sales
+        token: auth_token
+        branch: main
+
+    procurement-pipeline:
+      enabled: true
+      source: GITHUB
+      embedding_model: "all-MiniLM-L6-v2"
+      name: "procurement-vector-db"
+      version: "1.0"
+      vector_store_name: "procurement-vector-db-v1-0"
+      GITHUB:
+        url: https://github.com/rh-ai-quickstart/RAG.git
+        path: notebooks/procurement
+        token: auth_token
+        branch: main
+
+    techsupport-pipeline:
+      enabled: true
+      source: GITHUB
+      embedding_model: "all-MiniLM-L6-v2"
+      name: "techsupport-vector-db"
+      version: "1.0"
+      vector_store_name: "techsupport-vector-db-v1-0"
+      GITHUB:
+        url: https://github.com/rh-ai-quickstart/RAG.git
+        path: notebooks/techsupport
+        token: auth_token
+        branch: main
+
