@@ -1,0 +1,111 @@
+# Ticketing channel (Zammad) - use with helm-install-ticketing
+# Zammad is deployed as a subchart of the main chart.
+# Bootstrap job creates MCP agent token, patches the credentials secret, and
+# restarts dependent deployments — no separate token step needed after install.
+
+ticketingZammad:
+  enabled: true
+
+  # Subchart config — cluster-specific overrides (FQDN, OpenShift UID) injected by Makefile.
+  # Bootstrap image registry/repo/tag: defaults from helm/zammad/values.yaml (avoid duplicating here).
+  # Makefile overlay still sets ticketingZammad.bootstrap.* from REGISTRY/VERSION at helm-install-ticketing.
+  # Bootstrap job: seeds users/groups and (with createToken=true) creates MCP agent token in-cluster.
+  # Registers Zammad Webhook + Trigger → integration-dispatcher (cluster-internal URL by default).
+  # webhookSecret defaults in-chart when empty (*ssa-zammad-webhook-default*); override for production.
+  webhookSecret: ""
+  bootstrap:
+    integrationWebhook:
+      enabled: true
+      # url: omit to use http://<mainChartReleaseName>-integration-dispatcher.<namespace>.svc.cluster.local/zammad/webhook
+      mainChartReleaseName: "self-service-agent"
+      # Webhook trigger: limit to group(s) by name (bootstrap resolves to ids). Override with triggerGroupIds if you prefer numeric ids.
+      triggerGroupNames: "Users"
+      # Do not POST to the agent after manager handoff (same tag as ZAMMAD_TAG_MANAGER_REVIEW / send_to_manager_review).
+      triggerTagsExclude: "pending-manager-review"
+    adminEmail: "admin@zammad.local"
+    adminPassword: "ZammadR0cks!"
+    autowizardToken: "ssa-zammad-autowizard-9f3a2b1c"
+    createToken: true
+    credentialsSecret: "self-service-agent-zammad-credentials"
+    mcpDeployment: "mcp-zammad-mcp"
+    integrationDispatcherDeployment: "self-service-agent-integration-dispatcher"
+    requestManagerDeployment: "self-service-agent-request-manager"
+    # Comma-separated (optional): extra customer users — same as mockServiceNow / TEST_USERS + mock-employee-data. Makefile: export TEST_USERS=... for helm-install-ticketing.
+    testUsers: ""
+
+  # OpenShift Route for external UI access
+  externalRoute:
+    enabled: true
+
+  # Upstream Zammad subchart values
+  zammad:
+    # Keep service names as zammad-* regardless of Helm release name
+    fullnameOverride: "zammad"
+
+    autoWizard:
+      enabled: true
+      config: |
+        {
+          "Token": "ssa-zammad-autowizard-9f3a2b1c",
+          "TextModuleLocale": { "Locale": "en-us" },
+          "Users": [
+            {
+              "login": "admin@zammad.local",
+              "firstname": "Admin",
+              "lastname": "User",
+              "email": "admin@zammad.local",
+              "organization": "Default",
+              "password": "ZammadR0cks!"
+            }
+          ],
+          "Organizations": [{"name": "Default"}],
+          "Settings": [
+            {"name": "product_name", "value": "Zammad Demo"},
+            {"name": "system_online_service", "value": true}
+          ]
+        }
+
+    zammadConfig:
+      initContainers:
+        volumePermissions:
+          enabled: false
+      nginx:
+        trustedProxies:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+      railsserver:
+        trustedProxies: "['127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']"
+
+    postgresql:
+      volumePermissions:
+        enabled: false
+      global:
+        compatibility:
+          openshift:
+            adaptSecurityContext: force
+
+    elasticsearch:
+      sysctlImage:
+        enabled: false
+      volumePermissions:
+        enabled: false
+      global:
+        compatibility:
+          openshift:
+            adaptSecurityContext: force
+
+knowledgeBases:
+  configMaps:
+    - name: kb-general-support
+      kbName: general-support
+
+requestManagement:
+  agentService:
+    promptOverrides:
+      lg-prompt-ticket-laptop-refresh: /app/agent-service/config/lg-prompts/ticket-laptop-refresh-lg-prompt-big.yaml
+
+mcp-servers:
+  mcp-servers:
+    zammad-mcp:
+      enabled: true

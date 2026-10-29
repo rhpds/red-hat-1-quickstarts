@@ -1,0 +1,940 @@
+# Default values for self-service-agent
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global log level for all services (DEBUG, INFO, WARNING, ERROR)
+logLevel: "INFO"
+
+# This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
+image:
+  registry: quay.io/rh-ai-quickstart
+  requestManager: self-service-agent-request-manager
+  agentService: self-service-agent-service
+  integrationDispatcher: self-service-agent-integration-dispatcher
+  mockEventing: self-service-agent-mock-eventing
+  mockServiceNow: self-service-agent-mock-servicenow
+  promptGuard: self-service-agent-promptguard
+  # This sets the pull policy for images.
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  # Anchor: bump once here; subchart defaults (e.g. mcp-servers Snow) alias this tag.
+  tag: &releaseImageTag "0.0.13"
+
+# Test Integration Configuration
+testIntegrationEnabled: false
+
+# This is to override the chart name.
+# nameOverride: ""
+# fullnameOverride: ""
+
+# Database Configuration
+database:
+  # Override only if services must wait for a version other than the chart default
+  # (helm/templates/_env-helpers.tpl → EXPECTED_MIGRATION_VERSION, default "003").
+  # expectedMigrationVersion: "003"
+
+  # Database connection URL - leave empty to use default pgvector service
+  # Format: postgresql://username:password@host:port/database
+  url: ""  # Uses default: postgresql://postgres:rag_password@self-service-agent-pgvector:5432/postgres
+
+# This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# This is for setting Kubernetes Labels to a Pod.
+# For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+podLabels: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# This is for setting up a service more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/
+service:
+  # This sets the service type more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
+  type: ClusterIP
+  # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
+  port: 8000
+
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+llama_stack_url: http://llamastack:8321
+
+# Knowledge Base Configuration
+knowledgeBases:
+  # Optional: seed additional knowledge bases from pre-existing ConfigMaps.
+  # Each ConfigMap's files are registered as a separate knowledge base.
+  # This is additive — built-in KBs from the agent-service image are always registered.
+  #
+  # Example:
+  #   configMaps:
+  #     - name: my-kb-configmap   # Name of the ConfigMap in the same namespace
+  #       kbName: my-custom-kb    # KB name to register under (defaults to ConfigMap name)
+  configMaps: []
+
+# LlamaStack Client Configuration
+# These settings configure both the native LlamaStack client and OpenAI-compatible client
+# By default, clients use Kubernetes auto-injected service discovery environment variables
+# (LLAMASTACK_SERVICE_HOST and LLAMASTACK_SERVICE_PORT). Only override if needed.
+llamastack:
+  # Post-init scaling configuration
+  # When enabled, llama-stack starts with 1 replica (from llama-stack chart default)
+  # After init job completes, this job scales deployment to targetReplicas
+  # Note: This is controlled by REPLICA_COUNT in Makefile - if REPLICA_COUNT is set,
+  #       this will be enabled automatically and targetReplicas will be set to REPLICA_COUNT
+  postInitScaling:
+    enabled: false  # Set to true to enable post-init scaling (or use REPLICA_COUNT in Makefile)
+    targetReplicas: 2  # Number of replicas to scale to after init completes
+
+# Uncomment to override Kubernetes auto-discovery:
+# port: 8321                          # Port override (sets LLAMASTACK_CLIENT_PORT, default uses LLAMASTACK_SERVICE_PORT)
+# apiKey: "dummy-key"                 # API key for authentication (default: "dummy-key")
+# openaiBasePath: "/v1/openai/v1"    # Base path for OpenAI-compatible API (default: "/v1/openai/v1")
+# timeout: 120                        # Request timeout in seconds (default: 120)
+
+# NeMo Guardrails Configuration
+# Set enabled: true to activate raw message safety checks via the NeMo Guardrails /v1/guardrail/checks endpoint.
+# Requires NeMo Guardrails to be deployed first: make deploy-nemo-guardrails
+nemoGuardrails:
+  enabled: false
+
+# Safety/Shield Configuration (Llama Guard)
+safety:
+  # Model name for safety checks (e.g., llama-guard-3-8b)
+  # Leave empty to disable shields
+  model: ""
+  # URL for safety model endpoint
+  # Leave empty to disable shields
+  url: ""
+
+# PromptGuard Service Configuration (Attack Detection Shield)
+promptGuard:
+  enabled: false  # Set to true to enable PromptGuard service
+  replicas: 1
+  logLevel: "INFO"
+  uvicornWorkers: 1  # Single worker sufficient for CPU-based model
+  # This is the default value. It will be overridden if PROMPTGUARD_MODEL_ID is passed via the Makefile/Helm command.
+  modelId: "meta-llama/Llama-Prompt-Guard-2-86M"
+  huggingfaceToken: ""
+  resources:
+    limits:
+      cpu: "2"
+      memory: 2Gi  # 86M model is very lightweight
+    requests:
+      cpu: "1"
+      memory: 1Gi
+  # Health check configuration (CPU model loads faster than GPU models)
+  healthChecks:
+    livenessProbe:
+      initialDelaySeconds: 45  # Allow time for model download/loading
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+    readinessProbe:
+      initialDelaySeconds: 30  # Model loading time
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+
+# PostgreSQL configuration for llama-stack agent persistence
+# max_connections=200 for all envs; unified pool sizes (test/prod same).
+pgvector:
+  args:
+    - "-c"
+    - "max_connections=200"
+  extraDatabases:
+    - name: llama_agents
+      vectordb: false
+    - name: llama_responses
+      vectordb: false
+
+# Llama Stack agents configuration with PostgreSQL persistence
+llama-stack:
+  replicaCount: 1
+  initContainers:
+    enabled: true
+  resources: {}
+
+  # Override volumes to use emptyDir instead of PVC for multi-replica support
+  # Since all persistence is handled by PostgreSQL, we don't need a shared PVC
+  volumes:
+    - configMap:
+        defaultMode: 420
+        name: run-config
+      name: run-config-volume
+    - emptyDir: {}
+      name: dot-llama
+    - emptyDir: {}
+      name: cache
+
+  # Configure metadata store to use PostgreSQL for multi-replica support
+  metadataStore:
+    type: postgres
+    db_path: null  # Explicitly unset SQLite field
+    host: ${env.POSTGRES_HOST:=pgvector}
+    port: ${env.POSTGRES_PORT:=5432}
+    db: ${env.POSTGRES_DBNAME:=rag_blueprint}
+    user: ${env.POSTGRES_USER:=postgres}
+    password: ${env.POSTGRES_PASSWORD:=rag_password}
+    namespace: llamastack_registry
+
+  # Configure vector_io kvstore to use PostgreSQL for multi-replica support
+  vectorIOKvstore:
+    namespace: llamastack_vector_io
+    backend: kv_default
+
+  storage:
+    backends:
+      kv_default:
+        type: kv_postgres
+        host: ${env.POSTGRES_HOST:=pgvector}
+        port: ${env.POSTGRES_PORT:=5432}
+        db: llama_agents
+        user: ${env.POSTGRES_USER:=postgres}
+        password: ${env.POSTGRES_PASSWORD:=rag_password}
+      sql_default:
+        type: sql_postgres
+        host: ${env.POSTGRES_HOST:=pgvector}
+        port: ${env.POSTGRES_PORT:=5432}
+        db: llama_responses
+        user: ${env.POSTGRES_USER:=postgres}
+        password: ${env.POSTGRES_PASSWORD:=rag_password}
+
+  providers:
+    agents:
+      - provider_id: meta-ref-postgres
+        provider_type: inline::meta-reference
+        config:
+          persistence:
+            agent_state:
+              backend: kv_default
+              namespace: agents
+            responses:
+              backend: sql_default
+              table_name: responses
+
+  # Model configurations for llama-stack
+  # Add PromptGuard as a shield when enabled
+  models:
+    llama-prompt-guard-2-86m:
+      id: "meta-llama/Llama-Prompt-Guard-2-86M"
+      enabled: false
+      registerShield: true
+      # URL is set dynamically via Makefile
+      url: ""
+      apiToken: "fake"
+      maxTokens: 512
+
+mcp-servers:
+  enabled: true
+  mcp-servers:
+    # Custom self-service-agent ServiceNow MCP server
+    self-service-agent-snow:
+      enabled: true
+      replicas: 1
+      deploymentMode: deployment  # Use standard Deployment (no Toolhive)
+      image:
+        repository: quay.io/rh-ai-quickstart/self-service-agent-snow-mcp
+        tag: *releaseImageTag
+      port: 8000
+      targetPort: 8000
+      transport: streamable-http
+      imagePullPolicy: Always
+      env:
+        MCP_TRANSPORT: "streamable-http"
+        # Number of uvicorn worker processes (stateless-http allows multiple workers)
+        # Note: The mcp-servers chart doesn't auto-convert uvicornWorkers field to env var,
+        # so we set it directly in the env section
+        UVICORN_WORKERS: "4"
+
+    # Disable default servers from architecture chart
+    weather:
+      enabled: false
+
+    oracle-sqlcl:
+      enabled: false
+
+    # Key must differ from "zammad" — that label collides with ticketingZammad subchart pods (same Service selector → MCP connects to random Zammad component → connection refused).
+    zammad-mcp:
+      enabled: false
+      replicas: 1
+      deploymentMode: deployment
+      image:
+        repository: quay.io/rh-ai-quickstart/self-service-agent-zammad-mcp
+        tag: *releaseImageTag
+      port: 8000
+      targetPort: 8000
+      transport: streamable-http
+      imagePullPolicy: Always
+      extraContainers:
+        - name: basher-zammad-mcp
+          image: ghcr.io/basher83/zammad-mcp:1.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: basher-http
+              containerPort: 8001
+              protocol: TCP
+          env:
+            - name: ZAMMAD_URL
+              valueFrom:
+                secretKeyRef:
+                  name: self-service-agent-zammad-credentials
+                  key: zammad-api-url
+            - name: ZAMMAD_HTTP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: self-service-agent-zammad-credentials
+                  key: zammad-http-token
+            - name: MCP_TRANSPORT
+              value: "http"
+            - name: MCP_HOST
+              value: "127.0.0.1"
+            - name: MCP_PORT
+              value: "8001"
+      env:
+        MCP_TRANSPORT: "streamable-http"
+        UVICORN_WORKERS: "2"
+        # No trailing slash: avoids some Basher/streamable-http 307 redirect quirks (see basher_client).
+        ZAMMAD_BASHER_MCP_URL: "http://127.0.0.1:8001/mcp"
+        ZAMMAD_MCP_TIMEOUT_SECONDS: "120"
+        ZAMMAD_GROUP_HUMAN_MANAGED: "human_managed_tickets"
+        ZAMMAD_GROUP_ESCALATED_LAPTOP: "escalated_laptop_refresh_tickets"
+        ZAMMAD_LAPTOP_SPECIALIST_OWNER: "agent.laptop-specialist@example.com"
+        ZAMMAD_SPECIALIST_OWNER: "agent.general@example.com"
+        ZAMMAD_USER_MANAGER_FIELD: "manager_email"
+        # Fallback owner for send_to_manager_review when customer has no manager_email (bootstrap agents below).
+        ZAMMAD_MANAGER_EMAIL: "manager1@example.com"
+
+# Zammad ticketing channel (optional). Deploys Zammad as a subchart and injects credentials into pods.
+# Configured by values-ticketing.yaml.
+# Webhook HMAC: set webhookSecret here (also accepts legacy top-level zammad.*). Group/state/tag routing is configured in Zammad triggers only, not in the dispatcher.
+# webhookSecret: When ticketingZammad.enabled is true and this is empty, the chart uses default *ssa-zammad-webhook-default*
+# (see secrets.yaml). Override in production. When ticketing is disabled, zammad-webhook-secret is omitted.
+ticketingZammad:
+  enabled: false
+  url: "https://zammad.example.com"
+  webhookSecret: ""
+  # Optional: Zammad users.id for the API user that posts dispatcher replies — webhook ignores articles they author (feedback loop).
+  aiAgentUserId: ""
+  # Specialist owner emails apply to Zammad MCP tools only — set on mcp-servers.mcp-servers.zammad-mcp.env
+  # (ZAMMAD_LAPTOP_SPECIALIST_OWNER / ZAMMAD_SPECIALIST_OWNER). Customer-visible replies are POSTed by
+  # integration-dispatcher via REST ticket_articles (not MCP tools); From is the assignee when Zammad allows it.
+  mcp:
+    enabled: false
+    uri: "http://mcp-zammad-mcp:8000/mcp"
+
+# Enable/disable the llm-service dependency
+llm-service:
+  enabled: true
+
+# Mock ServiceNow Server Configuration (for testing and development)
+mockServiceNow:
+  enabled: true  # Default to enabled for development and testing
+  replicas: 1
+  logLevel: "INFO"
+  uvicornWorkers: 1  # Single worker sufficient for mock server
+  testUsers: ""  # Comma-separated list of email addresses to add to mock employee data for testing
+  resources: {}
+  # Health check configuration
+  healthChecks:
+    livenessProbe:
+      initialDelaySeconds: 15
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+    readinessProbe:
+      initialDelaySeconds: 5
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+
+# Request Management Layer Configuration
+requestManagement:
+  enabled: true
+
+
+  # Knative Eventing Configuration (for event-driven architecture)
+  knative:
+    enabled: true
+    eventing:
+      enabled: false  # Set to true to enable Knative eventing (production mode)
+    broker:
+      name: "self-service-agent-broker"
+      # Centralized broker URL configuration
+      url: "http://kafka-broker-ingress.knative-eventing.svc.cluster.local"
+      config:
+        # Kafka Broker configuration
+        numPartitions: 6  # Balance parallelism (less cross-session blocking) vs overhead; safe with 1–2 broker pods
+        replicationFactor: 1
+        retentionDuration: P7D
+
+    # Mock Eventing Service (default eventing mode for development and testing)
+    mockEventing:
+      enabled: true  # Default to mock eventing service (disable for full Knative eventing)
+      replicas: 1  # Must stay 1: partition-key ordering requires single pod (REPLICA_COUNT excludes mock-eventing)
+      logLevel: "INFO"
+      uvicornWorkers: 4  # Number of uvicorn worker processes for handling concurrent requests
+      resources: {}
+      # Health check configuration (dev-optimized for resource-constrained environments)
+      healthChecks:
+        livenessProbe:
+          initialDelaySeconds: 15     # Conservative for dev infrastructure
+          periodSeconds: 30           # Reasonable check frequency
+          timeoutSeconds: 10          # Longer timeout for slower dev nodes
+          failureThreshold: 5         # More failures allowed for dev instability
+          successThreshold: 1
+        readinessProbe:
+          initialDelaySeconds: 5      # Conservative for dev infrastructure
+          periodSeconds: 15           # Less frequent to reduce load
+          timeoutSeconds: 5           # Longer timeout for slower dev nodes
+          failureThreshold: 5         # More failures allowed for dev instability
+          successThreshold: 1
+
+
+  # Kafka cluster configuration for KnativeKafka channels
+  kafka:
+    enabled: true
+    name: "self-service-agent-kafka"
+    replicas: 1
+    storage:
+      type: "ephemeral"  # Use "persistent-claim" for production
+      size: "10Gi"       # Only used if type is "persistent-claim"
+    config:
+      defaultReplicationFactor: 1
+      minInSyncReplicas: 1
+      offsetsTopicReplicationFactor: 1
+      transactionStateLogMinIsr: 1
+      transactionStateLogReplicationFactor: 1
+    resources: {}
+    entityOperator:
+      topicOperator:
+        resources: {}
+      userOperator:
+        resources: {}
+
+
+  # Network Policies Configuration
+  networkPolicies:
+    enabled: true  # Enable network policies for cross-namespace communication
+    # Platform-specific ingress controller configuration
+    # Options: "openshift", "kind", "none"
+    # - openshift: Uses OpenShift Router labels (default for production)
+    # - kind: Allows ingress from ingress-nginx namespace (for local testing)
+    # - none: Disables ingress controller network policy (use for port-forward testing)
+    platform: "openshift"
+    additionalIngressRules: []  # Additional ingress rules if needed
+
+  # Request Manager Service
+  requestManager:
+    replicas: 1
+    # Pool sized for max_connections=200 (unified test/prod)
+    database:
+      poolSize: 8
+      maxOverflow: 8
+    uvicornWorkers: 4
+    resources: {}
+    # Session serialization (one request in-flight per session, FIFO, stuck reclaim)
+    # See docs/SESSION_SERIALIZATION_RUNBOOK.md
+    sessionSerialization:
+      # Must be >= agent.timeout so queued requests can wait for current one to finish
+      lockWaitTimeoutSeconds: 180   # Match agent.timeout (180); reduce if agent.timeout < 180
+      lockPollIntervalSeconds: 0.05 # Poll interval for lock acquisition (seconds); longer reduces DB load under contention
+      stuckBufferSeconds: 30        # Added to AGENT_TIMEOUT for time-based reclaim
+      heartbeatIntervalSeconds: 15  # How often each pod updates pod_heartbeats
+      heartbeatGraceSeconds: 30     # No check-in for this long → pod considered dead
+      backgroundReclaimIntervalSeconds: 45  # Scan for stuck processing
+      reclaimAction: "requeue"      # requeue | fail (stuck requests)
+    # Session Management Configuration
+    sessions:
+      # Set to "true" to maintain separate sessions per integration type (legacy behavior)
+      # Set to "false" to maintain a single session across all integration types (default)
+      perIntegrationType: "false"
+      # Session timeout in hours - sessions expire after this time (default: 336 hours = 2 weeks)
+      timeoutHours: 336
+      # How often to run session cleanup task in hours (default: 24 hours)
+      cleanupIntervalHours: 24
+      # How many days to retain inactive sessions before deletion (default: 30 days)
+      inactiveRetentionDays: 30
+      # Enable/disable eventing for session creation (default: "true")
+      # Set to "false" to use direct DB access only (for testing/debugging)
+      # When "true", uses eventing with atomic claiming to prevent race conditions
+      # Falls back to direct DB access if events fail or timeout
+      useSessionEventing: "true"
+    # Partial channel behavior policy over CHANNEL_REGISTRY (request-manager only).
+    # See docs/CHANNEL_BEHAVIOR.md — prefer registry edits for product defaults.
+    channelBehavior:
+      allowDbOverride: false
+      overrides: {}
+      # Example — isolate Slack from the web unified session pool:
+      # overrides:
+      #   SLACK:
+      #     session_isolated_by_integration_type: true
+    # External Access Configuration
+    externalAccess:
+      enabled: false  # Set to true to create external access via OpenShift Route
+    # Health check configuration (dev-optimized for resource-constrained environments)
+    healthChecks:
+      livenessProbe:
+        initialDelaySeconds: 20     # Conservative for dev infrastructure
+        periodSeconds: 30           # Reasonable check frequency
+        timeoutSeconds: 10          # Longer timeout for slower dev nodes
+        failureThreshold: 5         # More failures allowed for dev instability
+        successThreshold: 1
+      readinessProbe:
+        initialDelaySeconds: 10     # Conservative for dev infrastructure
+        periodSeconds: 15           # Less frequent to reduce load
+        timeoutSeconds: 5           # Longer timeout for slower dev nodes
+        failureThreshold: 5         # More failures allowed for dev instability
+        successThreshold: 1
+      startupProbe:
+        initialDelaySeconds: 5      # Conservative start for dev
+        periodSeconds: 5            # Less frequent checks for dev
+        timeoutSeconds: 10          # Longer timeout for slower dev nodes
+        failureThreshold: 24        # 2 minutes total startup time (dev infrastructure)
+        successThreshold: 1
+    # HPA-style autoscaling
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilization: 70
+      targetMemoryUtilization: 80
+
+  # Integration Dispatcher Service
+  integrationDispatcher:
+    replicas: 1
+    uvicornWorkers: 4  # Number of uvicorn worker processes for handling concurrent requests
+    resources: {}
+    # External Access Configuration
+    # When enabled, only /slack/* endpoints are externally accessible (path-restricted for security)
+    externalAccess:
+      enabled: true  # Set to true to create external access via OpenShift Route
+    # Health check configuration (dev-optimized for resource-constrained environments)
+    healthChecks:
+      livenessProbe:
+        initialDelaySeconds: 15     # Conservative for dev infrastructure
+        periodSeconds: 30           # Standard frequency
+        timeoutSeconds: 10          # Longer timeout for slower dev nodes
+        failureThreshold: 5         # More failures allowed for dev instability
+        successThreshold: 1
+      readinessProbe:
+        initialDelaySeconds: 8      # Conservative for dev infrastructure
+        periodSeconds: 15           # Less frequent to reduce load
+        timeoutSeconds: 5           # Longer timeout for slower dev nodes
+        failureThreshold: 5         # More failures allowed for dev instability
+        successThreshold: 1
+      startupProbe:
+        initialDelaySeconds: 3      # Conservative start for dev
+        periodSeconds: 5            # Less frequent checks for dev
+        timeoutSeconds: 10          # Longer timeout for slower dev nodes
+        failureThreshold: 20        # 1.5 minutes total startup time (dev infrastructure)
+        successThreshold: 1
+    # HPA-style autoscaling
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilization: 70
+      targetMemoryUtilization: 80
+
+  # Agent Configuration
+  agent:
+    # Global router and default entry when channel_behavior.entry_agent_id is null.
+    defaultAgentId: "routing-agent"
+    # Agent response timeout in seconds
+    timeout: 180
+    # Always refresh agent mapping from LlamaStack on each request
+    # Set to false for better performance, true for maximum reliability
+    alwaysRefreshMapping: true
+
+  # Agent Service
+  agentService:
+    replicas: 1
+    uvicornWorkers: 4  # Number of uvicorn worker processes for handling concurrent requests
+    resources: {}
+    # Override LangGraph prompt configuration for specific agents
+    # Format: lg-prompt-<agent-name>: "path/to/prompt.yaml"
+    # Example: lg-prompt-laptop-refresh: "config/lg-prompts/my-custom-prompt.yaml"
+    promptOverrides: {}
+    # Fault Injection Configuration (for testing API resilience)
+    faultInjection:
+      enabled: false              # Set to true to enable fault injection
+      rate: 0.1                   # Failure rate (0.0 to 1.0) - 0.1 = 10% chance
+      errorType: "timeout"        # Error type: timeout|connection|api_error|empty_response|rand
+                                  # - timeout: Raise TimeoutError
+                                  # - connection: Raise ConnectionError
+                                  # - api_error: Raise RuntimeError
+                                  # - empty_response: Return empty response (triggers retry logic)
+                                  # - rand: Randomly choose one of the above each time
+      maxRetries: ""              # Override max retries (empty = use default from YAML config)
+                                  # Set to 0 to disable retries and see failures immediately
+                                  # Set to 1 for one retry, etc.
+    # Health check configuration (dev-optimized for resource-constrained environments)
+    healthChecks:
+      livenessProbe:
+        initialDelaySeconds: 25     # Conservative for dev infrastructure (LLM loading)
+        periodSeconds: 30           # Standard frequency
+        timeoutSeconds: 15          # Longer timeout for LLM operations on dev nodes
+        failureThreshold: 5         # More failures allowed for dev instability
+        successThreshold: 1
+      readinessProbe:
+        initialDelaySeconds: 15     # Conservative for dev infrastructure (LLM loading)
+        periodSeconds: 15           # Less frequent to reduce load
+        timeoutSeconds: 10          # Longer timeout for LLM operations on dev nodes
+        failureThreshold: 5         # More failures allowed for dev instability
+        successThreshold: 1
+      startupProbe:
+        initialDelaySeconds: 5      # Conservative start for dev
+        periodSeconds: 5            # Less frequent checks for dev
+        timeoutSeconds: 15          # Longer timeout for LLM operations on dev nodes
+        failureThreshold: 30        # 2.5 minutes total startup time (dev infrastructure + LLM)
+        successThreshold: 1
+    # HPA-style autoscaling
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilization: 70
+      targetMemoryUtilization: 80
+
+  # Database pool configuration (unified test/prod, max_connections=200)
+  database:
+    poolSize: 8
+    maxOverflow: 8
+    poolTimeout: 30
+    poolRecycle: 3600
+    statementTimeout: 30000
+    idleTransactionTimeout: 300000
+    syncPoolMinSize: 1
+    syncPoolMaxSize: 5
+    syncPoolTimeout: 30
+
+  # Init Job
+  initJob:
+    resources: {}
+
+  # Integration Configuration
+  integrations:
+    # User defaults (auto-enabled based on service configuration)
+    userDefaults:
+      SLACK:
+        # Allow Slack to be enabled when health check passes
+        enabled: true
+        priority: 1
+        retryCount: 3
+        retryDelaySeconds: 60
+      EMAIL:
+        # Allow Email to be enabled when health check passes
+        enabled: true
+        priority: 2
+        retryCount: 3
+        retryDelaySeconds: 60
+      WEBHOOK:
+        # Webhook controlled by URL presence - no enabled flag needed
+        # url: "https://your-webhook-endpoint.com/webhook"
+        priority: 3
+        retryCount: 1
+        retryDelaySeconds: 30
+      TEST:
+        # Allow Test integration to be enabled when health check passes
+        enabled: true
+        priority: 5
+        retryCount: 1
+        retryDelaySeconds: 10
+
+  # Database Migration
+  dbMigration:
+    enabled: true
+    resources: {}
+
+# Security Configuration
+security:
+  # API Keys for tool integrations
+  apiKeys:
+    # Tool API keys (for external integrations)
+    snowIntegration: ""
+    hrSystem: ""
+    monitoringSystem: ""
+    # Web API keys for testing and internal tools
+    webKeys:
+      # Format: "key-name": "user-email"
+      "web-test-user": "test@company.com"
+      "web-admin": "admin@company.com"
+      "web-demo": "demo@company.com"
+
+  # Slack configuration
+  slack:
+    signingSecret: ""
+    botToken: ""  # For Integration Dispatcher
+
+  # JWT Authentication Configuration
+  jwt:
+    enabled: false  # Set to true to enable JWT validation
+    issuers:
+      # Example: Red Hat SSO
+      - issuer: "https://sso.redhat.com/auth/realms/redhat-external"
+        jwksUri: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
+        audience: "selfservice-api"
+        algorithms: ["RS256"]
+      # Example: Custom OIDC provider
+      - issuer: "https://auth.company.com"
+        jwksUri: "https://auth.company.com/.well-known/jwks.json"
+        audience: "selfservice-api"
+        algorithms: ["RS256", "HS256"]
+    validation:
+      verifySignature: true
+      verifyExpiration: true
+      verifyAudience: true
+      verifyIssuer: true
+      leeway: 60  # Seconds of leeway for clock skew
+
+  # Email configuration for Integration Dispatcher
+  email:
+    # SMTP Configuration (sending emails)
+    smtpHost: ""
+    smtpPort: "587"
+    smtpUsername: ""
+    smtpPassword: ""
+    smtpUseTls: "true"
+    fromEmail: "noreply@selfservice.local"
+    fromName: "Self-Service Agent"
+    # IMAP Configuration (receiving emails) - reuses SMTP credentials if not set
+    imapHost: ""  # e.g., "imap.gmail.com", "outlook.office365.com"
+    imapPort: "993"  # Default: 993 (SSL) or 143 (STARTTLS)
+    imapUsername: ""  # If not set, reuses smtpUsername
+    imapPassword: ""  # If not set, reuses smtpPassword
+    imapUseSsl: "true"  # Whether to use SSL/TLS (default: true)
+    imapMailbox: "INBOX"  # Mailbox to poll (default: INBOX)
+    imapPollInterval: "60"  # Polling interval in seconds (default: 60 - 1 minute)
+    imapLeaseDuration: "120"  # Leader election lease duration in seconds (default: 120 - should be 2x poll interval)
+    imapLeaseRenewalInterval: ""  # Lease renewal interval in seconds (optional, defaults to lease_duration // 2)
+
+# LangFuse Observability Platform
+# Enable with: export ENABLE_LANGFUSE=true before running make install (or make helm-install-test / helm-install-prod)
+langfuse:
+  enabled: false  # Set to true or use ENABLE_LANGFUSE=true environment variable
+
+  # LangFuse deployment configuration
+  replicas: 1
+  image:
+    repository: ghcr.io/langfuse/langfuse
+    tag: "3"
+    pullPolicy: Always
+
+  # Worker configuration (processes Redis queue and runs ClickHouse migrations)
+  worker:
+    replicas: 1
+    # Worker uses a separate image from the web container
+    image:
+      repository: "ghcr.io/langfuse/langfuse-worker"
+      # tag defaults to langfuse.image.tag if not specified
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+
+  # Database configuration (uses same PostgreSQL instance)
+  database:
+    name: langfuse
+    # Uses same credentials as main database
+
+  # ClickHouse configuration (required for v3)
+  clickhouse:
+    # ClickHouse version
+    version: "24.3"
+
+    # Database configuration
+    user: "langfuse"
+    database: "langfuse"
+    password: "langgraph_password"  # Default password (change for production)
+
+    # Storage configuration
+    storage: "10Gi"  # PersistentVolume size for trace data
+    storageClass: ""  # Use cluster default if empty
+
+    # Resource limits
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+
+    # Health check configuration
+    healthChecks:
+      livenessProbe:
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 5
+      readinessProbe:
+        initialDelaySeconds: 20
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 6
+
+  # Redis configuration (required for v3)
+  redis:
+    # Redis version
+    version: "7.2"
+
+    # Database configuration
+    password: "langgraph_password"  # Default password (change for production)
+
+    # Storage configuration
+    storage: "2Gi"  # PersistentVolume size for Redis data
+    storageClass: ""  # Use cluster default if empty
+
+    # Resource limits
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+    # Health check configuration
+    healthChecks:
+      livenessProbe:
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 3000
+
+  # External access via OpenShift Route
+  externalAccess:
+    enabled: true
+
+  # Resource limits
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "500m"
+
+  # Health checks
+  healthChecks:
+    livenessProbe:
+      path: /api/public/health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readinessProbe:
+      path: /api/public/health
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+  # MinIO configuration (S3-compatible storage, required for v3)
+  minio:
+    # MinIO version
+    version: "RELEASE.2024-12-18T13-15-44Z"
+
+    # Access credentials
+    accessKey: "minioadmin"
+    secretKey: "langgraph_password"  # Default password (change for production)
+
+    # Storage configuration
+    storage: "10Gi"  # PersistentVolume size for object storage
+    storageClass: ""  # Use cluster default if empty
+
+    # Resource limits
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+
+    # Health check configuration
+    healthChecks:
+      livenessProbe:
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+
+  # LangFuse configuration
+  config:
+    telemetryEnabled: false
+    initProjectName: "self-service-agent"
+    # Public API URL - defaults to internal service URL
+    # For production with external access, set to your external route URL (https://langfuse-route.apps.cluster.com)
+    publicApiUrl: ""  # Defaults to internal service URL if not set (http://self-service-agent-langfuse:3000)
+    # NextAuth URL - defaults to internal service URL if not set
+    nextAuthUrl: ""  # Override if needed
+    # Secrets (auto-generated if not provided)
+    nextAuthSecret: ""  # Leave empty to auto-generate
+    salt: ""  # Leave empty to auto-generate
+    encryptionKey: ""  # Leave empty to auto-generate (256-bit hex, 64 chars)
+    adminApiKey: ""  # Leave empty to auto-generate. Used for Admin API to create API keys programmatically.
+
+    # Auto-initialization (creates organization, project, and admin user on first startup)
+    # Leave empty to disable auto-initialization
+    initOrgId: "self-service-agent-org"  # Organization ID
+    initOrgName: "Self Service Agent"  # Organization display name
+    initProjectId: "self-service-agent-project"  # Project ID
+    initUserEmail: "admin@example.com"  # Admin user email
+    initUserName: "Admin User"  # Admin user display name
+    initUserPassword: "langgraph_password"  # Admin user password (change for production!)

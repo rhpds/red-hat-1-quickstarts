@@ -1,0 +1,64 @@
+{{- if and .Values.requestManagement.enabled .Values.requestManagement.knative.eventing.enabled }}
+---
+# Using Red Hat AMQ Streams (Streams for Apache Kafka) v3.0.0-13
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: {{ .Values.requestManagement.kafka.name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+  labels:
+    {{- include "self-service-agent.labels" . | nindent 4 }}
+spec:
+  kafka:
+    listeners:
+    - name: plain
+      port: 9092
+      type: internal
+      tls: false
+    config:
+      default.replication.factor: {{ .Values.requestManagement.kafka.config.defaultReplicationFactor }}
+      min.insync.replicas: {{ .Values.requestManagement.kafka.config.minInSyncReplicas }}
+      offsets.topic.replication.factor: {{ .Values.requestManagement.kafka.config.offsetsTopicReplicationFactor }}
+      transaction.state.log.min.isr: {{ .Values.requestManagement.kafka.config.transactionStateLogMinIsr }}
+      transaction.state.log.replication.factor: {{ .Values.requestManagement.kafka.config.transactionStateLogReplicationFactor }}
+      auto.create.topics.enable: false
+    # Resources moved to KafkaNodePool
+  entityOperator:
+    {{- if .Values.requestManagement.kafka.entityOperator.topicOperator.resources }}
+    topicOperator:
+      resources:
+        {{- toYaml .Values.requestManagement.kafka.entityOperator.topicOperator.resources | nindent 8 }}
+    {{- end }}
+    {{- if .Values.requestManagement.kafka.entityOperator.userOperator.resources }}
+    userOperator:
+      resources:
+        {{- toYaml .Values.requestManagement.kafka.entityOperator.userOperator.resources | nindent 8 }}
+    {{- end }}
+---
+# KafkaNodePool for managing Kafka broker storage and resources
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: {{ .Values.requestManagement.kafka.name }}-pool
+  namespace: {{ .Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ .Values.requestManagement.kafka.name }}
+    {{- include "self-service-agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.requestManagement.kafka.replicas }}
+  roles:
+    - controller
+    - broker
+  storage:
+    type: {{ .Values.requestManagement.kafka.storage.type }}
+    {{- if eq .Values.requestManagement.kafka.storage.type "persistent-claim" }}
+    size: {{ .Values.requestManagement.kafka.storage.size }}
+    {{- end }}
+  {{- if .Values.requestManagement.kafka.resources }}
+  resources:
+    {{- toYaml .Values.requestManagement.kafka.resources | nindent 4 }}
+  {{- end }}
+{{- end }}

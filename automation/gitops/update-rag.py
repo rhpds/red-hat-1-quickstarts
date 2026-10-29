@@ -17,6 +17,21 @@ import yaml
 UPSTREAM = "https://github.com/rh-ai-quickstart/RAG.git"
 LOCAL = "https://github.com/rhpds/red-hat-1-quickstarts.git"
 CHART_PATH = "automation/gitops/tenant/deploy/helm/rag"
+RAG_IGNORE_DIFFERENCES = '''  ignoreDifferences:
+    - group: route.openshift.io
+      kind: Route
+      jsonPointers:
+        - /spec/host
+        - /spec/alternateBackends
+    - group: kubeflow.org
+      kind: Notebook
+      name: rag-pipeline-notebook
+      jqPathExpressions:
+        - '.spec.template.spec.containers[].env[] | select(.name == "PIP_CERT" or .name == "REQUESTS_CA_BUNDLE" or .name == "SSL_CERT_FILE" or .name == "PIPELINES_SSL_SA_CERTS" or .name == "GIT_SSL_CAINFO")'
+        - '.spec.template.spec.containers[].volumeMounts[] | select(.name == "trusted-ca")'
+        - '.spec.template.spec.volumes[] | select(.name == "trusted-ca")'
+        - '.spec.template.spec.initContainers[] | select(.name == "clone-notebook-repo") | .resources'
+'''
 
 
 def run(*args):
@@ -74,8 +89,24 @@ def update(source, ref, destination, dependency_dir=None):
         for name in ("infra", "tenant/bootstrap", "deploy/helm/rag", "tests/e2e", "tests/e2e_ui", "tests/integration/llamastack"):
             if not (checkout / name).is_dir():
                 raise ValueError(f"Missing upstream directory: {name}")
+        if not (checkout / "tenant/bootstrap/values.yaml").is_file():
+            raise ValueError("Missing upstream tenant bootstrap values.yaml")
         shutil.copytree(checkout / "infra", stage / "infra")
         shutil.copytree(checkout / "tenant", stage / "tenant")
+        # Local bootstrap extensions are maintained separately from upstream RAG.
+        local_extension = destination / "tenant/bootstrap/templates/application-it-selfsvc.yaml"
+        if local_extension.exists():
+            shutil.copy2(local_extension, stage / "tenant/bootstrap/templates/application-it-selfsvc.yaml")
+        rag_application = stage / "tenant/bootstrap/templates/application-rag.yaml"
+        if rag_application.exists():
+            original = rag_application.read_text()
+            old = "name: {{ .Values.tenant.name }}"
+            if original.count(old) != 1:
+                raise ValueError("Upstream RAG Application name changed; review the tenant-name adaptation")
+            original = original.replace(old, "name: tenant-{{ .Values.tenant.name }}")
+            if original.count("  syncPolicy:\n") != 1:
+                raise ValueError("Upstream RAG Application sync policy changed; review the drift adaptations")
+            rag_application.write_text(original.replace("  syncPolicy:\n", RAG_IGNORE_DIFFERENCES + "  syncPolicy:\n"))
         upstream_tests = stage / "upstream-rag-tests"
         shutil.copytree(checkout / "tests/e2e", upstream_tests / "e2e")
         shutil.copytree(checkout / "tests/e2e_ui", upstream_tests / "e2e_ui")
