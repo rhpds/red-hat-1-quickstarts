@@ -51,7 +51,7 @@ The tenant bootstrap accepts `it-selfsvc.namespace`, `it-selfsvc.git.revision`,
 and `it-selfsvc.model` fields `id`, `url`, and `apiToken`, plus optional native
 Helm overrides in `it-selfsvc.values`. Set `it-selfsvc.model.name` to a simple
 provider name when the model ID contains slashes; it defaults to the model ID.
-The agnosticv tenant configuration provides these values and provisions `user-<guid>-it-svc` alongside
+The agnosticv tenant configuration provides these values and provisions `user-<guid>-it-selfsvc` alongside
 `user-<guid>-rag`. The model token is rendered into a Kubernetes Secret rather
 than the Llama Stack ConfigMap, but is still present in the Argo CD Application
 values; restrict access to those Applications.

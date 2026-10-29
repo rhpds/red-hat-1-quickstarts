@@ -41,12 +41,17 @@ class AgnosticvIntegrationTests(unittest.TestCase):
                            env=env, check=True, capture_output=True, text=True)
             data = yaml.safe_load(result.read_text())
             values = data["values"]
-            self.assertEqual({x["suffix"] for x in data["suffixes"]}, {"rag", "it-svc"})
+            self.assertEqual({x["suffix"] for x in data["suffixes"]}, {"rag", "it-selfsvc"})
             self.assertIn("llama-scout-17b", data["models"])
             self.assertEqual(values["rag"]["namespace"], "user-7kzmd-rag")
-            self.assertEqual(values["it-selfsvc"]["namespace"], "user-7kzmd-it-svc")
+            self.assertEqual(values["it-selfsvc"]["namespace"], "user-7kzmd-it-selfsvc")
             self.assertEqual(values["it-selfsvc"]["model"], {"id": "llama-scout-17b", "url": "https://model.example.invalid/v1", "apiToken": "test-model-key"})
             self.assertEqual(values["rag"]["values"]["global"]["models"]["remotellm"]["apiToken"], "test-model-key")
+            self.assertEqual(values["rag"]["values"]["configure-pipeline"]["minio"]["image"]["repository"], "quay.io/rh-aiservices-bu/minio")
+            config_source = yaml.safe_load(Path(CONFIG).read_text())
+            self.assertNotIn("agnosticd.ai_quickstarts.quickstart_deploy_via_make", config_source["workloads"])
+            self.assertIn("agnosticd.core_workloads.ocp4_workload_gitops_bootstrap", config_source["workloads"])
+            self.assertEqual(next(x for x in data["suffixes"] if x["suffix"] == "it-selfsvc")["limit_range"]["default"]["memory"], "1Gi")
             bootstrap_values = tmp / "bootstrap.yaml"
             bootstrap_values.write_text(yaml.safe_dump(values))
             bootstrap = subprocess.check_output(["helm", "template", "bootstrap", str(ROOT / "tenant/bootstrap"), "-f", str(bootstrap_values)], text=True)
@@ -65,11 +70,11 @@ class AgnosticvIntegrationTests(unittest.TestCase):
             self.assertEqual(rag_model["config"]["api_token"], "test-model-key")
             self.assertTrue(any(m["model_id"] == "llama-scout-17b" for m in rag_config["registered_resources"]["models"]))
             app = apps["it-selfsvc-7kzmd"]
-            self.assertEqual(app["spec"]["destination"]["namespace"], "user-7kzmd-it-svc")
+            self.assertEqual(app["spec"]["destination"]["namespace"], "user-7kzmd-it-selfsvc")
             child_values = tmp / "it-values.yaml"
             child_values.write_text(app["spec"]["source"]["helm"]["values"])
             chart = ROOT / "it-selfsvc/chart"
-            output = subprocess.check_output(["helm", "template", "self-service-agent", str(chart), "--namespace", "user-7kzmd-it-svc",
+            output = subprocess.check_output(["helm", "template", "self-service-agent", str(chart), "--namespace", "user-7kzmd-it-selfsvc",
                 "-f", str(chart / "values-test.yaml"), "-f", str(chart / "values-demo.yaml"), "-f", str(child_values)], text=True)
             resources = {(d["kind"], d["metadata"]["name"]): d for d in yaml.safe_load_all(output)
                          if isinstance(d, dict) and "kind" in d and "metadata" in d}
@@ -86,8 +91,8 @@ class AgnosticvIntegrationTests(unittest.TestCase):
                 if name == "agent-service":
                     self.assertEqual(env_vars["LG_PROMPT_LAPTOP_REFRESH"], "/app/agent-service/config/lg-prompts/lg-prompt-small-scout.yaml")
             email = resources[("Secret", "self-service-agent-integration-secrets")]["data"]
-            self.assertEqual(base64.b64decode(email["smtp-host"]).decode(), "test-email-server-smtp.user-7kzmd-it-svc.svc.cluster.local")
-            self.assertEqual(base64.b64decode(email["imap-host"]).decode(), "test-email-server-imap.user-7kzmd-it-svc.svc.cluster.local")
+            self.assertEqual(base64.b64decode(email["smtp-host"]).decode(), "test-email-server-smtp.user-7kzmd-it-selfsvc.svc.cluster.local")
+            self.assertEqual(base64.b64decode(email["imap-host"]).decode(), "test-email-server-imap.user-7kzmd-it-selfsvc.svc.cluster.local")
             for endpoint in ("https://model.example.invalid/", "https://model.example.invalid/v1", "https://model.example.invalid/v1/"):
                 with self.subTest(endpoint=endpoint):
                     input_values["litellm_api_endpoint"] = endpoint
