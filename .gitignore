@@ -4,3 +4,5 @@ www/
 .agents/
 .claude/skills/
 .pi/
+.vscode/
+skills-lock.json
