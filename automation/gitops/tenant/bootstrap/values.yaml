@@ -1,0 +1,45 @@
+# Default values for bootstrap.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+deployer:
+  domain: "apps.cluster-guid.example.com"
+  apiUrl: "https://api.cluster-guid.example.com"
+  guid: "abcde"
+
+tenant:
+  name: "tenant-name" 
+  user:
+    name: "user-name"
+    password: "user-password"
+
+gitops:
+  namespace: openshift-gitops
+  applicationControllerServiceAccount: openshift-gitops-argocd-application-controller
+
+rbac:
+  enabled: false
+  clusterRoleName: argocd-rag-bootstrap-manager
+
+# Set to empty to NOT create workspaces
+rag:
+  namespace: rag
+  git:
+    url: https://github.com/rhpds/red-hat-1-quickstarts.git
+    revision: main
+    path: automation/gitops/tenant/deploy/helm/rag
+  values:
+    llm-service:
+      enabled: false
+      secret:
+        hf_token: ""
+    llama-stack:
+      secrets:
+        TAVILY_SEARCH_API_KEY: "paste-your-key-here"
+    global:
+      models:
+        remotellm:
+          enabled: false
+          apiToken: "paste-your-token-here"
+          url: "paste-your-url-here"
+          id: "paste-your-model-id-here"

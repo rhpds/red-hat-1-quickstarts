@@ -1,0 +1,12 @@
+{{- if .Values.suggestedQuestions }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "rag.fullname" . }}-suggested-questions
+  labels:
+    {{- include "rag.labels" . | nindent 4 }}
+data:
+  RAG_QUESTION_SUGGESTIONS: |
+    {{- .Values.suggestedQuestions | toJson | nindent 4 }}
+{{- end }}
+

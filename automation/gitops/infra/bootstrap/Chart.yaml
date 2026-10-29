@@ -1,0 +1,5 @@
+apiVersion: v2
+name: quickstarts-infra-bootstrap
+description: LB2142 cluster GitOps bootstrap marker
+type: application
+version: 0.1.0
