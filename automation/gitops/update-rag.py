@@ -2,6 +2,7 @@
 """Refresh the locally vendored RAG GitOps content."""
 import argparse
 import gzip
+import importlib.util
 import io
 import json
 import re
@@ -16,7 +17,10 @@ import yaml
 
 UPSTREAM = "https://github.com/rh-ai-quickstart/RAG.git"
 LOCAL = "https://github.com/rhpds/red-hat-1-quickstarts.git"
-CHART_PATH = "automation/gitops/tenant/deploy/helm/rag"
+CHART_PATH = "automation/gitops/tenant/rag"
+_spec = importlib.util.spec_from_file_location("image_pins", Path(__file__).with_name("image_pins.py"))
+image_pins = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(image_pins)
 RAG_IGNORE_DIFFERENCES = '''  ignoreDifferences:
     - group: route.openshift.io
       kind: Route
@@ -27,9 +31,11 @@ RAG_IGNORE_DIFFERENCES = '''  ignoreDifferences:
       kind: Notebook
       name: rag-pipeline-notebook
       jqPathExpressions:
-        - '.spec.template.spec.containers[].env[] | select(.name == "PIP_CERT" or .name == "REQUESTS_CA_BUNDLE" or .name == "SSL_CERT_FILE" or .name == "PIPELINES_SSL_SA_CERTS" or .name == "GIT_SSL_CAINFO")'
-        - '.spec.template.spec.containers[].volumeMounts[] | select(.name == "trusted-ca")'
-        - '.spec.template.spec.volumes[] | select(.name == "trusted-ca")'
+        - '.spec.template.spec.containers[] | select(.name == "kube-rbac-proxy")'
+        - '.spec.template.spec.containers[].env[] | select(.name == "PIP_CERT" or .name == "REQUESTS_CA_BUNDLE" or .name == "SSL_CERT_FILE" or .name == "PIPELINES_SSL_SA_CERTS" or .name == "KF_PIPELINES_SSL_SA_CERTS" or .name == "GIT_SSL_CAINFO")'
+        - '.spec.template.spec.containers[].volumeMounts[] | select(.name == "trusted-ca" or .name == "runtime-images" or .name == "elyra-dsp-details")'
+        - '.spec.template.spec.volumes[] | select(.name == "trusted-ca" or .name == "runtime-images" or .name == "elyra-dsp-details" or .name == "kube-rbac-proxy-config" or .name == "kube-rbac-proxy-tls-certificates")'
+        - '.spec.template.spec.serviceAccountName | select(. == "rag-pipeline-notebook")'
         - '.spec.template.spec.initContainers[] | select(.name == "clone-notebook-repo") | .resources'
 '''
 
@@ -93,10 +99,17 @@ def update(source, ref, destination, dependency_dir=None):
             raise ValueError("Missing upstream tenant bootstrap values.yaml")
         shutil.copytree(checkout / "infra", stage / "infra")
         shutil.copytree(checkout / "tenant", stage / "tenant")
+        # RAG refresh replaces tenant/, so carry the other vendored charts
+        # forward without modifying their files or source metadata.
+        for name in ("it-selfsvc", "multimodal"):
+            local_chart = destination / "tenant" / name
+            if local_chart.exists():
+                shutil.copytree(local_chart, stage / "tenant" / name)
         # Local bootstrap extensions are maintained separately from upstream RAG.
-        local_extension = destination / "tenant/bootstrap/templates/application-it-selfsvc.yaml"
-        if local_extension.exists():
-            shutil.copy2(local_extension, stage / "tenant/bootstrap/templates/application-it-selfsvc.yaml")
+        for name in ("application-it-selfsvc.yaml", "application-multimodal.yaml"):
+            local_extension = destination / "tenant/bootstrap/templates" / name
+            if local_extension.exists():
+                shutil.copy2(local_extension, stage / "tenant/bootstrap/templates" / name)
         rag_application = stage / "tenant/bootstrap/templates/application-rag.yaml"
         if rag_application.exists():
             original = rag_application.read_text()
@@ -116,7 +129,7 @@ def update(source, ref, destination, dependency_dir=None):
         local_infra = destination / "infra/bootstrap"
         if local_infra.exists():
             shutil.copytree(local_infra, stage / "infra/bootstrap", dirs_exist_ok=True)
-        chart = stage / "tenant/deploy/helm/rag"
+        chart = stage / "tenant/rag"
         shutil.copytree(checkout / "deploy/helm/rag", chart, dirs_exist_ok=True)
         values = stage / "tenant/bootstrap/values.yaml"
         raw = values.read_text()
@@ -137,6 +150,7 @@ def update(source, ref, destination, dependency_dir=None):
             run("helm", "dependency", "build", str(chart))
         verify_dependencies(chart)
         fix_llamastack_secret_reference(chart)
+        image_pins.apply(chart)
         (stage / "rag-source.json").write_text(json.dumps({"repository": UPSTREAM, "commit": commit}, indent=2) + "\n")
         # Keep backups until all staged paths are installed, and roll back on failure.
         installed, backups = [], []

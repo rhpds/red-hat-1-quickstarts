@@ -1,0 +1,118 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  name: {{ include "self-service-agent.fullname" . }}-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "self-service-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: init
+spec:
+  # Allow job to retry on failure
+  backoffLimit: 6
+  # Keep failed pods for debugging
+  ttlSecondsAfterFinished: 86400  # 24 hours
+  template:
+    metadata:
+      annotations:
+        app.kubernetes.io/component: "init"
+      labels:
+        {{- include "self-service-agent.labels" . | nindent 8 }}
+        app.kubernetes.io/component: init
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "self-service-agent.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: init-and-complete
+          image: {{ include "rh1.pinnedImage" (printf "%v/%v:%v" (.Values.image.registry) (.Values.image.agentService) (.Values.image.tag | default .Chart.AppVersion)) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: LLAMA_STACK_URL
+              value: {{ .Values.llama_stack_url }}
+            - name: LLAMASTACK_SERVICE_HOST
+              value: "llamastack"
+            {{- if hasKey .Values "llamastack" }}
+            {{- if .Values.llamastack.port }}
+            - name: LLAMASTACK_CLIENT_PORT
+              value: {{ .Values.llamastack.port | quote }}
+            {{- end }}
+            {{- if .Values.llamastack.apiKey }}
+            - name: LLAMASTACK_API_KEY
+              value: {{ .Values.llamastack.apiKey | quote }}
+            {{- end }}
+            {{- if .Values.llamastack.openaiBasePath }}
+            - name: LLAMASTACK_OPENAI_BASE_PATH
+              value: {{ .Values.llamastack.openaiBasePath | quote }}
+            {{- end }}
+            {{- if .Values.llamastack.timeout }}
+            - name: LLAMASTACK_TIMEOUT
+              value: {{ .Values.llamastack.timeout | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if and (hasKey .Values "knowledgeBases") .Values.knowledgeBases.configMaps }}
+            - name: EXTRA_KB_PATH
+              value: /mnt/knowledge-bases
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          {{- if and (hasKey .Values "requestManagement") (hasKey .Values.requestManagement "initJob") .Values.requestManagement.initJob.resources }}
+          resources:
+            {{- toYaml .Values.requestManagement.initJob.resources | nindent 12 }}
+          {{- end }}
+          {{- if and (hasKey .Values "knowledgeBases") .Values.knowledgeBases.configMaps }}
+          volumeMounts:
+            {{- range .Values.knowledgeBases.configMaps }}
+            - name: kb-cm-{{ .kbName | default .name | lower | replace "_" "-" | replace "." "-" }}
+              mountPath: /mnt/knowledge-bases/{{ .kbName | default .name }}
+              readOnly: true
+            {{- end }}
+          {{- end }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+
+              echo "Waiting for LlamaStack at $LLAMA_STACK_URL..."
+              until curl -ks "$LLAMA_STACK_URL/" --max-time 5 --silent --fail || curl -ks "$LLAMA_STACK_URL" --max-time 5 --silent; do
+                echo "Still waiting for LlamaStack..."
+                sleep 10
+              done
+              echo "LlamaStack is ready"
+
+              echo "Registering knowledge bases..."
+
+              # Change to the agent service directory and run the registration script
+              cd /app/agent-service
+
+              # Run the asset registration script
+              echo "Running asset registration script..."
+              python3 -m agent_service.scripts.register_assets
+
+              # If we get here, the script succeeded (set -e will exit on failure)
+              echo "Initialization job completed successfully"
+      {{- if and (hasKey .Values "knowledgeBases") .Values.knowledgeBases.configMaps }}
+      volumes:
+        {{- range .Values.knowledgeBases.configMaps }}
+        - name: kb-cm-{{ .kbName | default .name | lower | replace "_" "-" | replace "." "-" }}
+          configMap:
+            name: {{ .name }}
+        {{- end }}
+      {{- end }}

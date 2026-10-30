@@ -54,6 +54,10 @@ class RefreshTests(unittest.TestCase):
         (self.dest / "infra/bootstrap/local").write_text("keep")
         (self.dest / "tenant/bootstrap/templates").mkdir(parents=True)
         (self.dest / "tenant/bootstrap/templates/application-it-selfsvc.yaml").write_text("local self-service\n")
+        (self.dest / "tenant/bootstrap/templates/application-multimodal.yaml").write_text("local multimodal\n")
+        for name in ("it-selfsvc", "multimodal"):
+            (self.dest / "tenant" / name / "chart").mkdir(parents=True)
+            (self.dest / "tenant" / name / "chart/values.yaml").write_text(f"{name}: unchanged\n")
         (self.dest / "unrelated").write_text("keep")
         self.commit()
 
@@ -78,8 +82,13 @@ class RefreshTests(unittest.TestCase):
         self.assertIn(update_rag.LOCAL, values)
         self.assertIn(update_rag.CHART_PATH, values)
         self.assertIn("tenant-{{ .Values.tenant.name }}", (self.dest / "tenant/bootstrap/templates/application-rag.yaml").read_text())
-        self.assertIn("/spec/alternateBackends", (self.dest / "tenant/bootstrap/templates/application-rag.yaml").read_text())
+        rag_application = (self.dest / "tenant/bootstrap/templates/application-rag.yaml").read_text()
+        self.assertIn("/spec/alternateBackends", rag_application)
+        self.assertIn(update_rag.RAG_IGNORE_DIFFERENCES, rag_application)
         self.assertEqual((self.dest / "tenant/bootstrap/templates/application-it-selfsvc.yaml").read_text(), "local self-service\n")
+        self.assertEqual((self.dest / "tenant/bootstrap/templates/application-multimodal.yaml").read_text(), "local multimodal\n")
+        for name in ("it-selfsvc", "multimodal"):
+            self.assertEqual((self.dest / "tenant" / name / "chart/values.yaml").read_text(), f"{name}: unchanged\n")
         self.assertEqual((self.dest / "upstream-rag-tests/e2e/README.md").read_text(), "e2e\n")
         before = snapshot(self.dest)
         self.refresh()

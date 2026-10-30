@@ -1,0 +1,67 @@
+{{- if .Values.eval.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ppe-compliance-monitor.fullname" . }}-eval
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: eval
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "ppe-compliance-monitor.labels" . | nindent 8 }}
+        app.kubernetes.io/component: eval
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-backend
+          image: {{ include "rh1.pinnedImage" (printf "%v:%v" (.Values.initUtils.busybox.repository) (.Values.initUtils.busybox.tag)) | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for backend to be ready..."
+              until wget -qO- http://{{ include "ppe-compliance-monitor.fullname" . }}-backend:{{ .Values.backend.port }}/api/ >/dev/null 2>&1; do
+                echo "Backend not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "Backend is ready"
+      containers:
+        - name: eval
+          image: {{ include "rh1.pinnedImage" (printf "%v/%v:%v" (.Values.global.imageRegistry) (.Values.eval.image.repository) (.Values.eval.image.tag)) | quote }}
+          imagePullPolicy: {{ .Values.eval.image.pullPolicy }}
+          env:
+            - name: BACKEND_URL
+              value: "http://{{ include "ppe-compliance-monitor.fullname" . }}-backend:{{ .Values.backend.port }}"
+            - name: OPENAI_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ppe-compliance-monitor.fullname" . }}-openai
+                  key: api-token
+            - name: OPENAI_API_ENDPOINT
+              value: {{ .Values.openai.apiEndpoint | quote }}
+            - name: OPENAI_MODEL
+              value: {{ .Values.openai.model | quote }}
+            - name: OPENAI_TEMPERATURE
+              value: {{ .Values.openai.temperature | quote }}
+            - name: DEEPEVAL_TELEMETRY_OPT_OUT
+              value: "YES"
+            {{- if .Values.postgresql.enabled }}
+            - name: DB_HOST
+              value: {{ .Values.postgresql.host | default (printf "%s-postgresql" (include "ppe-compliance-monitor.fullname" .)) | quote }}
+            - name: DB_PORT
+              value: {{ .Values.postgresql.port | quote }}
+            - name: DB_NAME
+              value: {{ .Values.postgresql.database | quote }}
+            - name: DB_USER
+              value: {{ .Values.postgresql.user | quote }}
+            - name: DB_PASSWORD
+              value: {{ .Values.postgresql.password | quote }}
+            {{- end }}
+{{- end }}

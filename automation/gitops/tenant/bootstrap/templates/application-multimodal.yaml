@@ -1,0 +1,44 @@
+{{- $app := .Values.ppe -}}
+{{- if $app }}
+{{- $git := $app.git | default dict -}}
+{{- $namespace := required "ppe.namespace is required" $app.namespace -}}
+{{- $defaults := dict "modelServing" (dict "runtimeType" "openvino" "kserve" (dict "gpu" (dict "enabled" false))) -}}
+{{- $values := mustMergeOverwrite $defaults (deepCopy ($app.values | default dict)) -}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ printf "ppe-%s" .Values.tenant.name | quote }}
+  namespace: {{ .Values.gitops.namespace | quote }}
+spec:
+  project: default
+  source:
+    repoURL: {{ $git.url | default "https://github.com/rhpds/red-hat-1-quickstarts.git" | quote }}
+    targetRevision: {{ $git.revision | default "main" | quote }}
+    path: {{ $git.path | default "automation/gitops/tenant/multimodal/chart" | quote }}
+    helm:
+      releaseName: {{ printf "ppe-%s" .Values.tenant.name | quote }}
+      values: |
+{{ toYaml $values | indent 8 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $namespace | quote }}
+  ignoreDifferences:
+    - group: route.openshift.io
+      kind: Route
+      jsonPointers:
+        - /spec/host
+        - /spec/alternateBackends
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 30
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

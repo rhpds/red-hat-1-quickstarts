@@ -43,11 +43,15 @@ class SelfServiceChartTests(unittest.TestCase):
             self.assertEqual(apps["tenant-7kzmd"]["spec"]["destination"]["namespace"], "user-7kzmd-rag")
             ignores = apps["tenant-7kzmd"]["spec"]["ignoreDifferences"]
             self.assertIn("/spec/host", next(i for i in ignores if i["kind"] == "Route")["jsonPointers"])
-            self.assertEqual(next(i for i in ignores if i["kind"] == "Notebook")["name"], "rag-pipeline-notebook")
+            notebook_ignore = next(i for i in ignores if i["kind"] == "Notebook")
+            self.assertEqual(notebook_ignore["name"], "rag-pipeline-notebook")
+            expressions = "\n".join(notebook_ignore["jqPathExpressions"])
+            for injected in ("kube-rbac-proxy", "KF_PIPELINES_SSL_SA_CERTS", "elyra-dsp-details", "runtime-images", "serviceAccountName"):
+                self.assertIn(injected, expressions)
             app = apps["it-selfsvc-7kzmd"]
             self.assertEqual(app["spec"]["destination"]["namespace"], "user-7kzmd-it-svc")
             source = app["spec"]["source"]
-            self.assertEqual(source["path"], "automation/gitops/it-selfsvc/chart")
+            self.assertEqual(source["path"], "automation/gitops/tenant/it-selfsvc/chart")
             self.assertEqual(source["targetRevision"], "test-revision")
             self.assertEqual(source["helm"]["releaseName"], "self-service-agent")
             self.assertEqual(source["helm"]["valueFiles"], ["values-test.yaml", "values-demo.yaml"])
@@ -58,9 +62,13 @@ class SelfServiceChartTests(unittest.TestCase):
             self.assertEqual(overlay["security"]["email"]["smtpHost"], "test-email-server-smtp.user-7kzmd-it-svc.svc.cluster.local")
             child_values = Path(tmp) / "child.yaml"
             child_values.write_text(yaml.safe_dump(overlay))
-            chart = ROOT / "it-selfsvc/chart"
+            chart = ROOT / "tenant/it-selfsvc/chart"
             rendered = subprocess.check_output(["helm", "template", "self-service-agent", str(chart), "--namespace", "user-7kzmd-it-svc", "-f", str(chart / "values-test.yaml"), "-f", str(chart / "values-demo.yaml"), "-f", str(child_values)], text=True)
             resources = {(d["kind"], d["metadata"]["name"]): d for d in yaml.safe_load_all(rendered) if isinstance(d, dict) and "kind" in d and "metadata" in d}
+            self.assertNotIn(("PersistentVolumeClaim", "llama-stack-data"), resources)
+            child_values.write_text(yaml.safe_dump({**overlay, "llama-stack": {**overlay["llama-stack"], "volumes": [{"name": "dot-llama", "persistentVolumeClaim": {"claimName": "llama-stack-data"}}]}}))
+            with_claim = subprocess.check_output(["helm", "template", "self-service-agent", str(chart), "--namespace", "user-7kzmd-it-svc", "-f", str(chart / "values-test.yaml"), "-f", str(chart / "values-demo.yaml"), "-f", str(child_values)], text=True)
+            self.assertTrue(any(d and d.get("kind") == "PersistentVolumeClaim" and d["metadata"]["name"] == "llama-stack-data" for d in yaml.safe_load_all(with_claim)))
             for kind, name in (("Deployment", "test-email-server"), ("Route", "test-email-server-ui"), ("Service", "test-email-server-smtp"), ("Secret", "self-service-agent-servicenow-credentials"), ("Deployment", "self-service-agent-agent-service")):
                 self.assertIn((kind, name), resources)
             for name in ("self-service-agent-init", "self-service-agent-db-migration"):
@@ -87,6 +95,8 @@ class RefreshSelfServiceTests(unittest.TestCase):
                      "helm/values-test.yaml": "{}\n", "helm/values-demo.yaml": "{}\n",
                      "helm/templates/init-job.yaml": "metadata:\n  name: init\n",
                      "helm/templates/db-migration-job.yaml": "metadata:\n  name: migration\n",
+                     "helm/templates/minio-deployment.yaml": 'image: "quay.io/minio/minio:{{ .Values.langfuse.minio.version }}"\n',
+                     "helm/templates/langfuse-deployment.yaml": "image: quay.io/minio/mc:latest\n",
                      "test-email-server/test-email-server-greenmail.yaml": "kind: ConfigMap\n"}
             for name, contents in files.items():
                 path = source / name
@@ -94,7 +104,8 @@ class RefreshSelfServiceTests(unittest.TestCase):
                 path.write_text(contents)
             with tarfile.open(deps / "llama-stack-1.0.0.tgz", "w:gz") as archive:
                 for name, data in (("llama-stack/Chart.yaml", b"name: llama-stack\nversion: 1.0.0\n"),
-                                   ("llama-stack/templates/deployment.yaml", b'for u in {{ $model.url }}/models#{{ $model.apiToken }}; do\n')):
+                                   ("llama-stack/templates/deployment.yaml", b'for u in {{ $model.url }}/models#{{ $model.apiToken }}; do\n'),
+                                   ("llama-stack/templates/pvc.yaml", b'kind: PersistentVolumeClaim\nmetadata:\n  name: llama-stack-data\n')):
                     entry = tarfile.TarInfo(name)
                     entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
@@ -103,7 +114,7 @@ class RefreshSelfServiceTests(unittest.TestCase):
                 subprocess.run(["git", "-C", str(source), "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture"], check=True)
             commit()
             updater.update(source, "HEAD", dest, deps)
-            app = dest / "it-selfsvc"
+            app = dest / "tenant/it-selfsvc"
             def snapshot():
                 return {str(p.relative_to(app)): p.read_bytes() for p in app.rglob("*") if p.is_file()}
             before = snapshot()

@@ -1,0 +1,355 @@
+# Global configuration
+global:
+  imageRegistry: quay.io/rh-ai-quickstart
+
+# Init/wait images that previously hit Docker Hub anonymous rate limits (postgres, busybox).
+# mirror.gcr.io/library/* serves Docker Hub official library images for pulls that bypass docker.io quotas.
+initUtils:
+  busybox:
+    repository: mirror.gcr.io/library/busybox
+    tag: "1.36"
+
+backend:
+  replicas: 1
+  port: 8888
+  corsOrigins: ""
+  resources:
+    requests:
+      cpu: "1400m"
+      memory: 2500Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  # Config storage: aws-compatible-storage config bucket when enabled - enables horizontal scaling
+  configStorage:
+    enabled: true
+  image:
+    repository: ppe-compliance-monitor-backend
+    tag: latest
+    pullPolicy: Always
+  # REST URL for KServe status (8888); gRPC for OVMS remains port 9000 (defaultOvmsModelUrl). Multi-model OVMS keeps ISVC name "ppe" → ppe-predictor.
+  serviceUrl: "http://ppe-predictor.svc.cluster.local:8888"
+  modelInputName: "x"
+  modelVersion: "1"
+  logLevel: "INFO"
+  # Sets DEFAULT_OVMS_MODEL_URL for insert_demo_configs() when DB has no app_config; see app/backend/seed_demo_configs.py
+  # ppe-predictor Service: 80 = REST, 9000 = gRPC. ovmsclient uses gRPC only — do not use :80 here.
+  defaultOvmsModelUrl: "http://ppe-predictor:9000"
+  # gRPC predict deadline (seconds) for ovmsclient; CPU OVMS on OpenShift often needs >10s on cold start
+  ovmsGrpcTimeout: "60"
+
+openai:
+  apiToken: ""
+  apiEndpoint: ""
+  model: ""
+  temperature: "0.7"
+
+frontend:
+  replicas: 1
+  port: 3000
+  apiUrl: ""
+  image:
+    repository: ppe-compliance-monitor-frontend
+    tag: latest
+    pullPolicy: Always
+
+# S3-compatible object storage from ai-architecture-charts. S3 API stays in-cluster.
+# Credentials come from Secret aws-compatible-storage-credentials (AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY). Do not put cluster keys in this file; use a gitignored
+# values-secrets.yaml or --set s3Credentials.* .
+aws-compatible-storage:
+  enabled: true
+  fullnameOverride: aws-compatible-storage
+  image:
+    repository: quay.io/rh-aiservices-bu/s4
+    tag: "0.3.2"
+    pullPolicy: IfNotPresent
+  s3:
+    existingSecret: aws-compatible-storage-credentials
+    region: us-east-1
+  auth:
+    enabled: true
+  route:
+    enabled: true
+    s3Api:
+      enabled: false
+  storage:
+    data:
+      size: 10Gi
+
+# S3 / UI credential Secret (aws-compatible-storage-credentials).
+# Create values-secrets.yaml (gitignored) or use --set s3Credentials.* at deploy time.
+# `make deploy` will fail without credentials.
+#
+# The Secret must contain at minimum:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# When aws-compatible-storage.auth.enabled is true, also include:
+#   UI_USERNAME, UI_PASSWORD
+s3Credentials:
+  create: true
+  accessKeyId: ""
+  secretAccessKey: ""
+  uiUsername: ""
+  uiPassword: ""
+
+awsCompatibleStorageBuckets:
+  create: true
+  names:
+    - models
+    - data
+    - config
+
+jobImages:
+  cli: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+  python: registry.redhat.io/ubi9/python-311:latest
+  shell: registry.redhat.io/ubi9/ubi-minimal:latest
+
+# Video stream (RTSP) - always streams. Default: in-cluster MP4 from object storage via MediaMTX
+# For real camera: set streamUrl (e.g. rtsp://user:pass@camera-ip:554/stream)
+videoStream:
+  # When empty: deploy in-cluster video-stream stack (MP4 from object storage)
+  # When set: use external stream (real camera), do not deploy video-stream
+  streamUrl: ""
+  image:
+    repository: bluenviron/mediamtx
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 8554
+  path: live
+  # MediaMTX tuning (optional). Leave empty to use MediaMTX defaults:
+  # writeQueueSize → upstream sample default 512; udpReadBufferSize → 0 (OS UDP SO_RCVBUF).
+  mediamtx:
+    writeQueueSize: ""
+    udpReadBufferSize: ""
+
+# Object storage keys for model and video files (buckets created by the parent bootstrap Job)
+storage:
+  enabled: true
+  # PVC size for storing downloaded model and video files
+  size: 1Gi
+  model:
+    bucket: models
+    key: ppe.pt
+  video:
+    bucket: data
+    key: combined-video-no-gap-rooftop.mp4
+
+# PostgreSQL database for tracking data persistence
+postgresql:
+  enabled: true
+  host: "" # Defaults to {{ .Release.Name }}-ppe-compliance-monitor-postgresql
+  port: "5432"
+  database: "ppe_tracking"
+  user: "ppe_user"
+  password: "ppe_password"
+  storage:
+    size: 5Gi
+  image:
+    repository: mirror.gcr.io/library/postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+
+labelStudio:
+  enabled: true
+  global:
+    releaseName: ""
+    chartName: ppe-compliance-monitor
+  replicas: 1
+  image:
+    repository: docker.io/heartexlabs/label-studio
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  service:
+    port: 8080
+  route:
+    enabled: true
+    host: ""
+    tls:
+      enabled: true
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+  app:
+    host: ""
+    csrfTrustedOrigins: ""
+  storage:
+    size: 5Gi
+  database:
+    host: "" # Defaults to <release>-<chartName>-postgresql
+    port: "5432"
+    name: "ppe_tracking"
+    user: "ppe_user"
+    password: "ppe_password"
+  auth:
+    existingSecretName: ""
+    # Set your own long random key for production environments.
+    secretKey: "ppe-compliance-monitor-labelstudio-secret"
+
+# JupyterLab (YOLO training notebook); workload data lives on PVC mounted at /home/jovyan/work
+jupyter-training:
+  enabled: true
+  imageRegistry: quay.io/rh-ai-quickstart
+  image:
+    repository: ppe-compliance-monitor-jupyter-training
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 8Gi
+  # Do not set podSecurityContext.fsGroup: 100 on OpenShift (restricted-v2); it blocks pod creation (PVC stays Pending: WaitForFirstConsumer).
+  # podSecurityContext:
+  #   fsGroup: 100
+  # jupyterHome defaults to /tmp/jupyter-home. notebookRootDir defaults to /tmp/jupyter-home/notebooks (writable on OCP); PVC is linked as pvc-workspace until fsGroup allows using /home/jovyan/work directly.
+  workspace:
+    storage:
+      size: 1Gi
+      # If the workspace PVC stays Pending, pick a class from `oc get storageclass` (no default SC on many clusters).
+      # storageClassName: gp3
+  route:
+    enabled: true
+    host: ""
+    tls:
+      enabled: true
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+  auth:
+    existingSecretName: ""
+    token: changeme
+    # jupyterGit.enabled: true  # re-enable Git in Lab; remove pip uninstall from training/jupyter-training/Dockerfile, rebuild image, ensure git on PATH
+    # trainingExample.seedOnStartup: false  # skip copying bundled training/yolo_training.ipynb into the notebook root / PVC
+
+# Postgres MCP server (read-only SSE access for the LLM agent)
+postgresMcp:
+  enabled: true
+  image:
+    repository: docker.io/crystaldba/postgres-mcp
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 8000
+  accessMode: "restricted"
+
+eval:
+  enabled: true
+  image:
+    repository: ppe-compliance-monitor-eval
+    tag: latest
+    pullPolicy: Always
+
+data:
+  image:
+    repository: ppe-compliance-monitor-data
+    tag: latest
+    pullPolicy: Always
+
+runtimeDeployer:
+  enabled: true
+  # Default OVMS model id for cluster bootstrap (backend uses app_config.model_name per config).
+  modelName: "ppe"
+  # When multi-model serving is on, KServe sets this as the InferenceService name (predictor Service becomes <name>-predictor).
+  # Use "ppe" so OpenVINO multi-model matches defaultOvmsModelUrl/seeded model_url (ppe-predictor:9000). Override if you use a different ISVC name.
+  inferenceServiceName: "ppe"
+  image:
+    repository: ppe-compliance-monitor-runtime
+    tag: latest
+    pullPolicy: Always
+  scc:
+    enabled: false
+
+modelServing:
+  enabled: true
+  name: "" # Defaults to Release.Namespace + "-deploy"
+  # Runtime type: "openvino" (OVMS, current default) or "kserve" (V2/OIP REST with ONNX)
+  runtimeType: kserve
+  deploymentMode: RawDeployment
+  auth: false
+  replicas:
+    min: 1
+    max: 1
+  resources:
+    requests:
+      cpu: "2"
+      memory: 4Gi
+    limits:
+      cpu: "4"
+      memory: 16Gi
+  # OpenVINO Model Server config (used when runtimeType=openvino)
+  openvino:
+    image: "registry.redhat.io/rhoai/odh-openvino-model-server-rhel9@sha256:7daebf4a4205b9b81293932a1dfec705f59a83de8097e468e875088996c1f224"
+    restPort: 8888
+    grpcPort: 9000
+    modelFormat:
+      name: pytorch
+      version: "2"
+    # Single-model only: ovms/<model_name> synced to the predictor. When multiModel is true, multiModelStoragePath is used instead.
+    modelPath: ovms/ppe
+    # Multi-model (default for OpenShift OVMS): sync full ovms/ (all IR trees + config.json); create_runtime uses --config_path=/mnt/models/config.json
+    multiModel: true
+    multiModelStoragePath: ovms
+    # Per-model tuning baked into config.json (regenerated by init-data Job before upload)
+    config:
+      nireq: 8
+      pluginConfig: '{"PERFORMANCE_HINT": "THROUGHPUT", "ENABLE_CPU_PINNING": false}'
+      shape: '{"x":"(-1,3,640,640)"}'
+  # KServe-native runtime config (used when runtimeType=kserve)
+  # NVIDIA Triton Inference Server -- GPU-accelerated ONNX serving via V2/OIP REST
+  kserve:
+    gpu:
+      enabled: true
+      count: "1"
+      tolerations:
+        - key: g5-gpu
+          operator: Exists
+          effect: NoSchedule
+    image: "nvcr.io/nvidia/tritonserver:24.08-py3"
+    restPort: 8000
+    grpcPort: 9000
+    command: []
+    args: []
+    env: {}
+    modelFormat:
+      name: onnx
+      version: "1"
+    # Single model: object prefix must be triton/ (not triton/<stem>): KServe strips storage.path under /mnt/models, so
+    # triton/ppe yielded .../1/model.onnx (invalid model name "1"); triton yields .../ppe/1/model.onnx. runtimeDeployer.modelName must match <stem> (e.g. ppe).
+    modelPath: triton
+    # Multi-model: same parent prefix triton/ (see multiModelStoragePath). Triton trees: triton/<stem>/1/model.onnx; --strict-model-config=false.
+    multiModel: false
+    multiModelStoragePath: triton
+    modelInputName: images
+    templateName: kserve-tritonserver
+    templateDisplayName: "NVIDIA Triton Inference Server"
+
+openshift:
+  sharedHost: ""
+  route:
+    enabled: true
+    host: ""
+    tls:
+      enabled: true
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+  backendRoute:
+    enabled: true
+    host: ""
+    tls:
+      enabled: true
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+  networkPolicy:
+    enabled: true
+  scc:
+    enabled: false
+    name: "itap-demo-scc"
+  roleBinding:
+    enabled: false
+    serviceAccountName: default

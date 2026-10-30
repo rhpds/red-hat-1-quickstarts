@@ -1,0 +1,67 @@
+{{- if .Values.postgresMcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ppe-compliance-monitor.fullname" . }}-postgres-mcp
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ppe-compliance-monitor.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: postgres-mcp
+  template:
+    metadata:
+      labels:
+        {{- include "ppe-compliance-monitor.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres-mcp
+    spec:
+      initContainers:
+        - name: wait-for-postgresql
+          image: {{ include "rh1.pinnedImage" (printf "%v:%v" (.Values.initUtils.busybox.repository) (.Values.initUtils.busybox.tag)) | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL..."
+              until nc -z {{ .Values.postgresql.host | default (printf "%s-postgresql" (include "ppe-compliance-monitor.fullname" .)) }} {{ .Values.postgresql.port }}; do
+                echo "PostgreSQL not ready, retrying in 2s..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready"
+      containers:
+        - name: postgres-mcp
+          image: {{ include "rh1.pinnedImage" (printf "%v:%v" (.Values.postgresMcp.image.repository) (.Values.postgresMcp.image.tag)) | quote }}
+          imagePullPolicy: {{ .Values.postgresMcp.image.pullPolicy }}
+          args:
+            - "--access-mode={{ .Values.postgresMcp.accessMode }}"
+            - "--transport=sse"
+          ports:
+            - containerPort: {{ .Values.postgresMcp.port }}
+              name: sse
+          env:
+            - name: DATABASE_URI
+              value: "postgresql://{{ .Values.postgresql.user }}:{{ .Values.postgresql.password }}@{{ .Values.postgresql.host | default (printf "%s-postgresql" (include "ppe-compliance-monitor.fullname" .)) }}:{{ .Values.postgresql.port }}/{{ .Values.postgresql.database }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ppe-compliance-monitor.fullname" . }}-postgres-mcp
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-mcp
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.postgresMcp.port }}
+      targetPort: sse
+      protocol: TCP
+      name: sse
+  selector:
+    app.kubernetes.io/name: {{ include "ppe-compliance-monitor.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgres-mcp
+{{- end }}

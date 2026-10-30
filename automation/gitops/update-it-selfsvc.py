@@ -48,6 +48,59 @@ def normalize_local_dependency(path):
     path.write_bytes(buffer.getvalue())
 
 
+def adapt_observability_images(chart):
+    replacements = (
+        ("minio-deployment.yaml", '(printf "quay.io/minio/minio:%v" (.Values.langfuse.minio.version))',
+         '(.Values.langfuse.minio.image | default (printf "quay.io/minio/minio:%v" .Values.langfuse.minio.version))'),
+        ("langfuse-deployment.yaml", '(printf "quay.io/minio/mc:latest")',
+         '(.Values.langfuse.minio.clientImage | default "quay.io/minio/mc:latest")'),
+    )
+    for filename, old, new in replacements:
+        path = chart / "templates" / filename
+        text = path.read_text()
+        if text.count(old) != 1:
+            raise ValueError(f"Upstream {filename} changed; review the optional image overrides")
+        path.write_text(text.replace(old, new))
+
+
+def adapt_llamastack_pvc(chart):
+    """Create the upstream PVC only when a configured volume uses it."""
+    archives = list((chart / "charts").glob("llama-stack-*.tgz"))
+    if len(archives) != 1:
+        raise ValueError("Expected one Llama Stack dependency")
+    archive = archives[0]
+    prefix = b'''{{- $usesClaim := false -}}
+{{- range .Values.volumes -}}
+{{- with .persistentVolumeClaim -}}
+{{- if eq .claimName "llama-stack-data" -}}
+{{- $usesClaim = true -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $usesClaim }}
+'''
+    suffix = b'\n{{- end }}\n'
+    with tarfile.open(archive, "r:gz") as source:
+        entries = [(item, source.extractfile(item).read() if item.isfile() else None)
+                   for item in source.getmembers()]
+    buffer = io.BytesIO()
+    found = False
+    with gzip.GzipFile(fileobj=buffer, mode="wb", filename="", mtime=0) as gz:
+        with tarfile.open(fileobj=gz, mode="w") as out:
+            for item, data in entries:
+                if item.name == "llama-stack/templates/pvc.yaml":
+                    if not data.startswith(prefix):
+                        if b'name: llama-stack-data' not in data:
+                            raise ValueError("Llama Stack PVC template changed; review the local patch")
+                        data = prefix + data.rstrip() + suffix
+                    item.size = len(data)
+                    found = True
+                out.addfile(item, io.BytesIO(data) if data is not None else None)
+    if not found:
+        raise ValueError("Llama Stack PVC template not found")
+    archive.write_bytes(buffer.getvalue())
+
+
 def update(source, ref, destination, dependency_dir=None):
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="selfsvc-update-", dir=destination) as temporary:
@@ -73,6 +126,7 @@ def update(source, ref, destination, dependency_dir=None):
             run("helm", "dependency", "build", str(chart), "--skip-refresh", *options)
         rag.verify_dependencies(chart)
         rag.fix_llamastack_secret_reference(chart)
+        adapt_llamastack_pvc(chart)
         for path in (chart / "charts").glob("ticketingZammad-*.tgz"):
             normalize_local_dependency(path)
         nested_packages = chart / "zammad/charts"
@@ -90,8 +144,11 @@ def update(source, ref, destination, dependency_dir=None):
             raise ValueError("GreenMail manifest contains Helm template delimiters; review it before updating")
         (chart / "templates/greenmail.yaml").write_text(greenmail)
         (chart / "templates/servicenow-mock-secret.yaml").write_text(MOCK_SECRET)
+        rag.image_pins.apply(chart)
+        adapt_observability_images(chart)
         (stage / "source.json").write_text(json.dumps({"repository": UPSTREAM, "ref": ref, "commit": commit}, indent=2) + "\n")
-        target, backup = destination / "it-selfsvc", tmp / "previous"
+        target, backup = destination / "tenant/it-selfsvc", tmp / "previous"
+        target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             target.rename(backup)
         try:
