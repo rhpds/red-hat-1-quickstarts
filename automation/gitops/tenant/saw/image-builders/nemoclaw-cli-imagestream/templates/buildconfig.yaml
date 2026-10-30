@@ -1,0 +1,31 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: {{ (split ":" .Values.output.imageStreamTag)._0 }}
+  labels:
+    {{- include "nemoclaw-cli-imagestream.labels" . | nindent 4 }}
+spec:
+  source:
+    type: Git
+    git:
+      uri: {{ .Values.source.git.uri }}
+      ref: {{ .Values.source.git.ref }}
+    dockerfile: |
+{{ .Files.Get "files/Dockerfile" | indent 6 }}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      buildArgs:
+        - name: NEMOCLAW_VERSION
+          value: {{ .Values.build.nemoclawVersion | quote }}
+        - name: SOURCE_REVISION
+          value: {{ .Values.source.git.ref | quote }}
+        - name: NODE_IMAGE
+          value: {{ .Values.build.nodeImage | quote }}
+        - name: MAX_OPENSHELL_VERSION
+          value: {{ .Values.build.maxOpenshellVersion | quote }}
+  output:
+    to:
+      kind: ImageStreamTag
+      name: {{ .Values.output.imageStreamTag }}
+  triggers: []

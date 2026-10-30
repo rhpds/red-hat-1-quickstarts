@@ -1,0 +1,6 @@
+dependencies:
+- name: vault
+  repository: file://charts/vault
+  version: 0.34.1
+digest: sha256:077ceeb7761b281c033371c75250f65f3c62eb9439ca81bdc06b60e78a27b59b
+generated: "2026-10-20T06:48:14.705597869Z"

@@ -1,0 +1,204 @@
+{{- include "openshell-sandbox.validateSandboxName" (.Values.sandboxName | default .Release.Name) }}
+{{- if ne .Values.containerRuntime "podman" }}
+{{- fail "containerRuntime: the in-guest installer supports podman only" }}
+{{- end }}
+{{- $secrets := include "openshell-sandbox.providerSecrets" . | fromJsonArray }}
+{{- range $secrets }}{{- include "openshell-sandbox.validateSecretName" . }}{{- end }}
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ include "openshell-sandbox.fullname" . }}
+  labels:
+    {{- include "openshell-sandbox.labels" . | nindent 4 }}
+    openshell.pattern/role: gateway
+spec:
+  runStrategy: Always
+  dataVolumeTemplates:
+    - metadata:
+        name: {{ include "openshell-sandbox.fullname" . }}-root
+        annotations:
+          cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+      spec:
+        {{- /* The disk is made once, from this source; see source in values.yaml. */}}
+        {{- if eq (include "openshell-sandbox.diskSource" .) "http" }}
+        source:
+          http:
+            url: {{ .Values.source.httpURL | quote }}
+        {{- else if eq (include "openshell-sandbox.diskSource" .) "dataSource" }}
+        sourceRef:
+          kind: DataSource
+          name: {{ include "openshell-sandbox.dataSourceName" . }}
+          namespace: {{ include "openshell-sandbox.goldenNamespace" . }}
+        {{- else }}
+        source:
+          registry:
+            url: {{ include "openshell-sandbox.diskImageURL" . | quote }}
+            pullMethod: {{ .Values.source.pullMethod | default "node" }}
+        {{- end }}
+        storage:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.vm.diskSize }}
+  template:
+    metadata:
+      labels:
+        {{- include "openshell-sandbox.labels" . | nindent 8 }}
+        openshell.pattern/role: gateway
+      annotations:
+        # Cloud-init still needs a restart. With vm.liveInputs the installer
+        # ConfigMap and Secrets are virtiofs, so they are not in this checksum.
+        {{- if not .Values.vm.liveInputs }}
+        openshell.pattern/installer-checksum: {{ include (print $.Template.BasePath "/configmap-installer.yaml") . | sha256sum | trunc 16 | quote }}
+        {{- end }}
+        openshell.pattern/cloudinit-checksum: {{ include (print $.Template.BasePath "/secret-cloudinit.yaml") . | sha256sum | trunc 16 | quote }}
+    spec:
+      domain:
+        cpu:
+          cores: {{ .Values.vm.cores }}
+        resources:
+          requests:
+            memory: {{ .Values.vm.memory }}
+        devices:
+          # Send the serial console (where saw-install/saw-apply log) to the
+          # virt-launcher pod's guest-console-log container, even when the
+          # cluster default leaves serial console logging off.
+          logSerialConsole: true
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+            {{- if not .Values.vm.liveInputs }}
+            - name: saw-installer
+              serial: saw-installer
+              disk:
+                bus: virtio
+            - name: saw-profiles
+              serial: saw-profiles
+              disk:
+                bus: virtio
+            - name: saw-proxy-ca
+              serial: saw-proxy-ca
+              disk:
+                bus: virtio
+            {{- range $i, $name := $secrets }}
+            - name: saw-sec-{{ $i }}
+              serial: saw-sec-{{ $i }}
+              disk:
+                bus: virtio
+            {{- end }}
+            {{- end }}
+          {{- if .Values.vm.liveInputs }}
+          filesystems:
+            - name: saw-installer
+              virtiofs: {}
+            - name: saw-profiles
+              virtiofs: {}
+            - name: saw-proxy-ca
+              virtiofs: {}
+            {{- range $i, $name := $secrets }}
+            - name: saw-sec-{{ $i }}
+              virtiofs: {}
+            {{- end }}
+            {{- if eq .Values.accessControl.ownerSubjectSource "resolved" }}
+            - name: saw-owner
+              virtiofs: {}
+            {{- end }}
+          {{- end }}
+          {{- if and (not .Values.vm.liveInputs) (eq .Values.accessControl.ownerSubjectSource "resolved") }}
+          filesystems:
+            - name: saw-owner
+              virtiofs: {}
+          {{- end }}
+          interfaces:
+            - name: default
+              masquerade: {}
+              ports:
+                - name: gateway
+                  port: 17670
+                  protocol: TCP
+                - name: dashboard
+                  port: 18789
+                  protocol: TCP
+                - name: webui
+                  port: 8080
+                  protocol: TCP
+                - name: ssh
+                  port: 22
+                  protocol: TCP
+                {{- range $e := include "openshell-sandbox.sandboxUi" . | fromJsonArray }}
+                - name: {{ $e.portName }}
+                  port: {{ $e.proxyPort }}
+                  protocol: TCP
+                {{- end }}
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: false
+        # No smm: it is x86-only and only needed for Secure Boot (off here),
+        # and an arm64 cluster refuses it.
+        features:
+          acpi: {}
+      # Dynamic SSH key provisioning: the guest agent keeps cloud-user's
+      # authorized_keys in sync with this Secret, also while the VM runs.
+      # `make saw-vm-ssh` adds the caller's key to it.
+      accessCredentials:
+        - sshPublicKey:
+            source:
+              secret:
+                secretName: {{ include "openshell-sandbox.sshKeySecretName" . }}
+            propagationMethod:
+              qemuGuestAgent:
+                users:
+                  - cloud-user
+      {{- if .Values.vm.readinessProbe }}
+      readinessProbe:
+        exec:
+          command: ["test", "-f", "/var/lib/saw/ready"]
+        initialDelaySeconds: 60
+        periodSeconds: 15
+        timeoutSeconds: 5
+        failureThreshold: 3
+      {{- end }}
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: {{ include "openshell-sandbox.fullname" . }}-root
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef:
+              name: {{ include "openshell-sandbox.fullname" . }}-cloudinit
+        - name: saw-installer
+          configMap:
+            name: {{ include "openshell-sandbox.fullname" . }}-installer
+        - name: saw-profiles
+          configMap:
+            name: saw-bom-profiles
+            optional: true
+        - name: saw-proxy-ca
+          configMap:
+            name: saw-proxy-ca
+        {{- if eq .Values.accessControl.ownerSubjectSource "resolved" }}
+        - name: saw-owner
+          configMap:
+            name: saw-owner-subject
+        {{- end }}
+        {{- /* Required. The virt-launcher pod is scheduled and stays
+             ContainerCreating, with FailedMount "secret … not found", and the
+             VM shows Starting, until each Secret exists. The kubelet retries
+             the mount (backoff capped around 2 minutes), so the VM boots
+             within about 2 minutes of the Secret appearing. An optional
+             iso9660 disk would instead be frozen empty at start. The profiles
+             ConfigMap above stays optional. */}}
+        {{- range $i, $name := $secrets }}
+        - name: saw-sec-{{ $i }}
+          secret:
+            secretName: {{ include "openshell-sandbox.vmSecretSource" (list $ $name) }}
+        {{- end }}

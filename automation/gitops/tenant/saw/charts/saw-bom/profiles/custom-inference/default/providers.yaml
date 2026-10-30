@@ -1,0 +1,19 @@
+apiVersion: saw.redhat.com/v1alpha1
+kind: Providers
+metadata:
+  profile: custom-inference
+spec:
+  providers:
+    # The deployment's own provider profile for its OpenAI-compatible server
+    # (overrides/governance-profiles/custom-inference.yaml): it names the
+    # host the key may reach. A provider only holds the credential; the
+    # endpoint, model and timeout are the sandbox's `inference:` settings
+    # (sandbox.yaml), read from the same `inference` Secret.
+    - name: custom-inference
+      type: custom-inference
+      credentialSecret: inference
+      credentialSecretKey: api_key
+    - name: brave
+      type: brave
+      credentialSecret: web-search
+      credentialSecretKey: api_key

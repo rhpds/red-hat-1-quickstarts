@@ -1,0 +1,15 @@
+apiVersion: v2
+dependencies:
+- name: vault
+  repository: file://charts/vault
+  version: 0.34.1
+description: A Helm chart to configure Hashicorp's vault.
+home: https://github.com/validatedpatterns/hashicorp-vault-chart
+icon: https://validatedpatterns.io/images/validated-patterns.png
+keywords:
+- pattern
+maintainers:
+- email: validatedpatterns@googlegroups.com
+  name: Validated Patterns Team
+name: hashicorp-vault
+version: 0.1.11

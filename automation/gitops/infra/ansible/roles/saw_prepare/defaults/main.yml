@@ -1,0 +1,14 @@
+---
+saw_prepare_enabled: "{{ saw_enabled | default(false) | bool }}"
+saw_prepare_namespace: openshell-agents
+saw_prepare_vault_namespace: vault
+saw_prepare_vault_token_secret: "{{ saw_vault_writer_secret | default('saw-vault-writer') }}"
+saw_prepare_vault_token_key: token
+saw_prepare_vault_ssh_path: hub/ssh
+saw_prepare_python_image: registry.access.redhat.com/ubi9/python-311@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c
+saw_prepare_mirror_tool_image: registry.redhat.io/ubi8/skopeo@sha256:7aef80fe88a7fdf028b20e7333f5e69c1f4bcadc5265950a1ad92abe44c5fb3c
+saw_prepare_mirror_source: "{{ saw_golden_image_source | default('ghcr.io/validatedpatterns-sandbox/openshell-gateway@sha256:eaf603d12d763c7154c04fcb78b8cae8cebfc3bdf25a155c63adfa6f74e7d31d') }}"
+saw_prepare_mirror_repository: openshell-gateway
+saw_prepare_mirror_source_secret: "{{ saw_mirror_source_secret | default('') }}"
+saw_prepare_retries: 180
+saw_prepare_delay: 10

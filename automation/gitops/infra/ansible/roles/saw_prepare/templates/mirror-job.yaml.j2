@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ _saw_mirror_job | to_json }}
+  namespace: {{ saw_prepare_namespace | to_json }}
+  labels:
+    app.kubernetes.io/part-of: saw-prepare
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: saw-image-mirror
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mirror
+          image: {{ saw_prepare_mirror_tool_image | to_json }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          env:
+            - {name: SAW_SOURCE, value: {{ saw_prepare_mirror_source | to_json }}}
+            - {name: SAW_DESTINATION, value: {{ _saw_registry_destination | to_json }}}
+          command: [/bin/sh, -c]
+          args:
+            - |
+{{ lookup('ansible.builtin.file', role_path ~ '/files/mirror.sh') | indent(14, true) }}
+          volumeMounts:
+            - {name: scratch, mountPath: /tmp}
+{% if saw_prepare_mirror_source_secret | length > 0 %}
+            - {name: source-auth, mountPath: /source-auth, readOnly: true}
+{% endif %}
+      volumes:
+        - name: scratch
+          emptyDir: {}
+{% if saw_prepare_mirror_source_secret | length > 0 %}
+        - name: source-auth
+          secret:
+            secretName: {{ saw_prepare_mirror_source_secret | to_json }}
+{% endif %}

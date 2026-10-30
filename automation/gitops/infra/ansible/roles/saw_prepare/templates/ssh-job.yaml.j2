@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ _saw_ssh_job | to_json }}
+  namespace: {{ saw_prepare_vault_namespace | to_json }}
+  labels:
+    app.kubernetes.io/part-of: saw-prepare
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: seed
+          image: {{ saw_prepare_python_image | to_json }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          env:
+            - {name: SAW_SSH_VAULT_PATH, value: {{ saw_prepare_vault_ssh_path | to_json }}}
+          command: [python, -c]
+          args:
+            - |
+{{ lookup('ansible.builtin.file', role_path ~ '/files/seed_ssh.py') | indent(14, true) }}
+          volumeMounts:
+            - {name: token, mountPath: /vault-token, readOnly: true}
+            - {name: ca, mountPath: /ca, readOnly: true}
+            - {name: scratch, mountPath: /tmp}
+      volumes:
+        - name: token
+          secret:
+            secretName: {{ saw_prepare_vault_token_secret | to_json }}
+            items:
+              - {key: {{ saw_prepare_vault_token_key | to_json }}, path: token}
+        - name: ca
+          configMap: {name: saw-vault-service-ca}
+        - name: scratch
+          emptyDir: {medium: Memory}

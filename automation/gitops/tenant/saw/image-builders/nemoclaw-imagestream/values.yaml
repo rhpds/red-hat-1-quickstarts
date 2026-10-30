@@ -1,0 +1,29 @@
+source:
+  # Supplied by make sandbox-build only after its discovery build completes.
+  discoveryImage: ""
+  git:
+    uri: "https://github.com/NVIDIA/NemoClaw.git"
+    ref: "f4de239dc8802027cd66266e59fbc6ec2d24a985" # fixes Debian curl package pin
+
+build:
+  discoveryNodeVersion: "24.19.0"
+  # Update with discoveryNodeVersion; multi-platform Node image index.
+  discoveryNodeDigest: "sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df"
+  # Required for the sandbox BuildConfig: upstream Dockerfile interpolates
+  # TARGETARCH in a FROM stage name, which OpenShift Buildah does not fill in.
+  # make sandbox-build detects homogeneous clusters or accepts BUILD_ARCH.
+  targetArch: ""
+  # NemoClaw v0.0.133 base image (multi-arch: amd64 and arm64).
+  baseImage: "ghcr.io/nvidia/nemoclaw/sandbox-base:v0.0.133@sha256:6dd56f1607f5d29d35731191052b6a317cff5fc2659f71b35695a76e0f36dc6a"
+  model: "claude-sonnet-4-6"
+  inferenceBaseUrl: "https://inference.local/v1"
+  inferenceApi: "openai-completions"
+  contextWindow: "200000"
+  maxTokens: "8192"
+  reasoning: "false"
+  toolDisclosure: "progressive"
+  agentTimeout: "600"
+  webSearchEnabled: "1"
+
+output:
+  imageStreamTag: "nemoclaw-sandbox:latest"

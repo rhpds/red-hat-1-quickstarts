@@ -1,0 +1,10 @@
+namespace: rhpds
+name: quickstarts
+version: 1.0.0
+readme: README.md
+authors:
+  - Red Hat Demo Platform
+description: Provision shared infrastructure for the quickstart GitOps charts
+dependencies: {}
+build_ignore:
+  - .git

@@ -1,0 +1,25 @@
+apiVersion: saw.redhat.com/v1alpha1
+kind: Providers
+metadata:
+  profile: data-science
+spec:
+  providers:
+    - name: nvidia
+      type: nvidia
+      credentialSecret: inference
+      credentialSecretKey: api_key
+    - name: brave
+      type: brave
+      credentialSecret: web-search
+      credentialSecretKey: api_key
+    # Optional native APIs: enable a provider and uncomment it in notebook.providers.
+    - name: openai
+      type: openai
+      enabled: false
+      credentialSecret: inference-openai
+      credentialSecretKey: api_key
+    - name: anthropic
+      type: anthropic
+      enabled: false
+      credentialSecret: inference-anthropic
+      credentialSecretKey: api_key

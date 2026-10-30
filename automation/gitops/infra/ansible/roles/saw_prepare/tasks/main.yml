@@ -1,0 +1,13 @@
+---
+- name: Prepare Secure Agent Workspace infrastructure
+  ansible.builtin.include_tasks: provision.yml
+  when:
+    - ACTION | default('provision') == 'provision'
+    - saw_prepare_enabled | bool
+
+- name: Preserve shared SAW infrastructure on removal
+  ansible.builtin.debug:
+    msg: SAW shared Vault keys and mirrored images are retained on destroy.
+  when:
+    - ACTION | default('provision') == 'destroy'
+    - saw_prepare_enabled | bool

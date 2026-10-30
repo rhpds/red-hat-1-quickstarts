@@ -1,0 +1,91 @@
+{{- if and (eq (lower (toString .Values.saw.enabled)) "true") (eq (lower (toString .Values.saw.inferenceSeed.enabled)) "true") }}
+{{- $seed := .Values.saw.inferenceSeed }}
+{{- if not (regexMatch "^hub(/[a-zA-Z0-9][a-zA-Z0-9_-]*)*/inference$" $seed.vaultPath) }}
+{{- fail "saw.inferenceSeed.vaultPath must be a hub/.../inference path" }}
+{{- end }}
+{{- if $seed.secretData.api_key }}
+{{- if eq ($seed.secretData.provider | default "") "custom-inference" }}
+{{- $url := urlParse (required "custom inference requires saw.inferenceSeed.secretData.url" $seed.secretData.url) }}
+{{- $_ := required "custom inference requires saw.inferenceSeed.secretData.model" $seed.secretData.model }}
+{{- $host := required "custom inference requires saw.governance.customInference.host" .Values.saw.governance.customInference.host }}
+{{- if or (ne $url.scheme "https") (ne (lower (trimSuffix ":443" $url.host)) (lower $host)) (ne (int .Values.saw.governance.customInference.port) 443) }}
+{{- fail "custom inference requires an HTTPS URL matching the governance host on port 443" }}
+{{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $seed.sourceSecret | quote }}
+  namespace: vault
+type: Opaque
+stringData:
+{{ toYaml $seed.secretData | indent 2 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saw-vault-service-ca
+  namespace: vault
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+data: {}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: saw-inference-seed
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: registry.access.redhat.com/ubi9/python-311@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: VAULT_PATH
+              value: {{ $seed.vaultPath | quote }}
+          command: [python, -c]
+          args:
+            - |
+              import json, os, pathlib, ssl, urllib.request
+              source = pathlib.Path('/input')
+              token = pathlib.Path('/vault-token/token').read_text().strip()
+              data = {name: (source / name).read_text().rstrip('\r\n') for name in ('api_key', 'provider', 'model', 'url') if (source / name).is_file()}
+              if not data.get('api_key'):
+                  raise SystemExit('Inference source Secret must contain api_key')
+              request = urllib.request.Request('https://vault.vault.svc:8200/v1/secret/data/' + os.environ['VAULT_PATH'], data=json.dumps({'data': data}).encode(), headers={'X-Vault-Token': token, 'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(request, context=ssl.create_default_context(cafile='/ca/service-ca.crt'), timeout=30) as response:
+                  print('Inference secret written to Vault:', response.status)
+          volumeMounts:
+            - {name: inference, mountPath: /input, readOnly: true}
+            - {name: token, mountPath: /vault-token, readOnly: true}
+            - {name: ca, mountPath: /ca, readOnly: true}
+      volumes:
+        - name: inference
+          secret:
+            secretName: {{ $seed.sourceSecret | quote }}
+        - name: token
+          secret:
+            secretName: {{ $seed.vaultTokenSecret | quote }}
+            items:
+              - key: {{ $seed.vaultTokenKey | quote }}
+                path: token
+        - name: ca
+          configMap:
+            name: saw-vault-service-ca
+{{- end }}

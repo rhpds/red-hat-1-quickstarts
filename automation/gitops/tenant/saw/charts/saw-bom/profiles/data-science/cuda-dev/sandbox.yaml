@@ -1,0 +1,34 @@
+apiVersion: saw.redhat.com/v1alpha1
+kind: Sandboxes
+metadata: {}
+spec:
+  sandboxes:
+    - name: cuda-sandbox
+      type: nemoclaw
+      enabled: true
+      agent: openclaw
+      image: ghcr.io/validatedpatterns-sandbox/nemoclaw-sandbox:latest@sha256:28457eec59e71eca310cd72fc4b57c71506c3fce4c30f2636a237dca85725dbd
+      providers:
+        - nvidia
+      # How the agent reaches its model: the `nvidia` provider's credential
+      # over the OpenAI protocol (NVIDIA's API is OpenAI-compatible), with
+      # the model from the `inference` Secret, else this default (the RHDH
+      # form pre-fills it; each sandbox has its own field).
+      inference:
+        providerRef: nvidia
+        model:
+          secretKeyRef:
+            name: inference
+            key: cuda_model
+          default: nvidia/nemotron-3.5-lightning-30b-a3b
+          title: Model (cuda-sandbox)
+      # The NemoClaw sandbox runs the OpenClaw gateway too: its control UI
+      # gets its own route like the notebook's (see default/sandbox.yaml).
+      ui:
+        route: true
+    - name: toolbox
+      type: generic
+      enabled: false
+      image: base
+      providers:
+        - nvidia

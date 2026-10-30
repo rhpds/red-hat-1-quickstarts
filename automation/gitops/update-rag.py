@@ -101,12 +101,12 @@ def update(source, ref, destination, dependency_dir=None):
         shutil.copytree(checkout / "tenant", stage / "tenant")
         # RAG refresh replaces tenant/, so carry the other vendored charts
         # forward without modifying their files or source metadata.
-        for name in ("it-selfsvc", "multimodal"):
+        for name in ("it-selfsvc", "multimodal", "saw"):
             local_chart = destination / "tenant" / name
             if local_chart.exists():
                 shutil.copytree(local_chart, stage / "tenant" / name)
         # Local bootstrap extensions are maintained separately from upstream RAG.
-        for name in ("application-it-selfsvc.yaml", "application-multimodal.yaml"):
+        for name in ("application-it-selfsvc.yaml", "application-multimodal.yaml", "application-saw.yaml"):
             local_extension = destination / "tenant/bootstrap/templates" / name
             if local_extension.exists():
                 shutil.copy2(local_extension, stage / "tenant/bootstrap/templates" / name)

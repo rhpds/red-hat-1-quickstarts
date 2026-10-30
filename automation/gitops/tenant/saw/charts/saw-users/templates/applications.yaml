@@ -1,0 +1,34 @@
+{{- include "saw-users.validate" . -}}
+{{- range $user := .Values.users | default list }}
+---
+{{ include "saw-users.application" (dict
+  "root" $
+  "user" $user
+  "appName" (printf "saw-%s-secrets" $user.name)
+  "wave" $.Values.syncWave.secrets
+  "path" "automation/gitops/tenant/saw/charts/pattern-secrets"
+  "release" (printf "saw-%s-secrets" $user.name)
+  "values" (include "saw-users.vaultPrefix" (dict "root" $ "user" $user))
+) }}
+---
+{{ include "saw-users.application" (dict
+  "root" $
+  "user" $user
+  "appName" (printf "saw-%s-bom" $user.name)
+  "wave" $.Values.syncWave.bom
+  "path" "automation/gitops/tenant/saw/charts/saw-bom"
+  "release" (printf "saw-%s-bom" $user.name)
+  "values" (include "saw-users.profiles" (dict "root" $ "user" $user))
+) }}
+---
+{{ include "saw-users.application" (dict
+  "root" $
+  "user" $user
+  "appName" (printf "saw-%s" $user.name)
+  "wave" $.Values.syncWave.sandbox
+  "path" "automation/gitops/tenant/saw/charts/openshell-saw"
+  "release" $user.name
+  "ignoreVMDefaults" true
+  "values" (include "saw-users.openshellValues" (dict "root" $ "user" $user))
+) }}
+{{- end }}

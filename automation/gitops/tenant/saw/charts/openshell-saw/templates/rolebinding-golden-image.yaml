@@ -1,0 +1,74 @@
+{{- /*
+The golden image lives in a shared namespace, while each SAW has its own.
+Only what the root disk's source needs there, for this namespace:
+
+  registry, from the internal registry (the default): pull the image
+    (system:image-puller). With pullMethod node the node pulls it with the
+    importer pod's pull secret.
+  dataSource: clone it. CDI clones across namespaces only when the cloning
+    service account may create datavolumes/source in the source namespace;
+    KubeVirt clones as this namespace's default service account.
+*/ -}}
+{{- $golden := include "openshell-sandbox.goldenNamespace" . }}
+{{- $source := include "openshell-sandbox.diskSource" . }}
+{{- if ne $golden .Release.Namespace }}
+{{- if and (eq $source "registry") (hasPrefix (printf "docker://%s/%s/" .Values.source.internalRegistry $golden) (include "openshell-sandbox.diskImageURL" .)) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "openshell-sandbox.fullname" . }}-{{ .Release.Namespace }}-golden-image-puller
+  namespace: {{ $golden }}
+  annotations:
+    # The credential-proxy CA hook also pulls from this namespace. Apply the
+    # existing pull permission before any hook tries to start a container.
+    argocd.argoproj.io/sync-wave: "-25"
+  labels:
+    {{- include "openshell-sandbox.labels" . | nindent 4 }}
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:serviceaccounts:{{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:image-puller
+{{- else if eq $source "dataSource" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "openshell-sandbox.fullname" . }}-{{ .Release.Namespace }}-golden-image
+  namespace: {{ $golden }}
+  labels:
+    {{- include "openshell-sandbox.labels" . | nindent 4 }}
+rules:
+  # Clone authorization checked by CDI for cross-namespace clones.
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes/source"]
+    verbs: ["create"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datasources"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "openshell-sandbox.fullname" . }}-{{ .Release.Namespace }}-golden-image
+  namespace: {{ $golden }}
+  labels:
+    {{- include "openshell-sandbox.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "openshell-sandbox.fullname" . }}-{{ .Release.Namespace }}-golden-image
+{{- end }}
+{{- end }}

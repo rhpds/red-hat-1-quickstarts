@@ -1,0 +1,22 @@
+{{- if and (eq (lower (toString .Values.saw.enabled)) "true") .Values.saw.governance.customInference.host }}
+{{- $config := .Values.saw.governance.customInference }}
+{{- if not (regexMatch "^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$" $config.host) }}
+{{- fail "saw.governance.customInference.host must be a hostname without a scheme, port, or wildcard" }}
+{{- end }}
+{{- if or (lt (int $config.port) 1) (gt (int $config.port) 65535) }}
+{{- fail "saw.governance.customInference.port must be between 1 and 65535" }}
+{{- end }}
+{{- $profile := .Files.Get "files/custom-inference.yaml" | fromYaml }}
+{{- $endpoint := index $profile.endpoints 0 }}
+{{- $_ := set $endpoint "host" $config.host }}
+{{- $_ := set $endpoint "port" (int $config.port) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: governance-interceptor-extra-profiles
+  namespace: openshell-agents
+data:
+  custom-inference.yaml: |
+{{ toYaml $profile | indent 4 }}
+{{- end }}
