@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ppe-compliance-monitor.fullname" . }}-frontend
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ppe-compliance-monitor.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "ppe-compliance-monitor.labels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: {{ include "rh1.pinnedImage" (printf "%v/%v:%v" (.Values.global.imageRegistry) (.Values.frontend.image.repository) (.Values.frontend.image.tag)) | quote }}
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          command: ["serve", "-s", "/app/build", "-l", "tcp://0.0.0.0:3000"]
+          ports:
+            - containerPort: {{ .Values.frontend.port }}
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: frontend-env
+              mountPath: /app/build/env.js
+              subPath: env.js
+      volumes:
+        - name: frontend-env
+          configMap:
+            name: {{ include "ppe-compliance-monitor.fullname" . }}-frontend-env
+            items:
+              - key: env.js
+                path: env.js

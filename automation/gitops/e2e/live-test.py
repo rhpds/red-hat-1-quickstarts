@@ -148,7 +148,7 @@ def main():
             raise ValueError("GitOps validation requires --tenant-app, --rag-app, and --expected-revision")
         apps = [(args.infra_app, "automation/gitops/infra/bootstrap"),
                 (args.tenant_app, "automation/gitops/tenant/bootstrap"),
-                (args.rag_app, "automation/gitops/tenant/deploy/helm/rag")]
+                (args.rag_app, "automation/gitops/tenant/rag")]
         for name, path in apps:
             app = json.loads(command(oc + ["get", "application", name, "-n", args.argocd_namespace, "-o", "json"]))
             source = validate_gitops_app(app, name, path, args.namespace if name == args.rag_app else None, args.expected_revision, args.expected_repo_url)

@@ -27,7 +27,7 @@ rag:
   git:
     url: https://github.com/rhpds/red-hat-1-quickstarts.git
     revision: main
-    path: automation/gitops/tenant/deploy/helm/rag
+    path: automation/gitops/tenant/rag
   values:
     llm-service:
       enabled: false

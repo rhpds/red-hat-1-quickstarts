@@ -1,3 +1,4 @@
 ## Tenant
 
-The `bootstrap` directory contains a Helm chart with the files used to deploy an Argo CD `Application` that deploys the RAG quickstart application.
+The `bootstrap` chart creates Argo CD Applications for the quickstarts. Their
+vendored Helm charts are in `rag`, `it-selfsvc/chart`, and `multimodal/chart`.

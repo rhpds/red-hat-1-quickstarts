@@ -2,10 +2,34 @@
 
 The cluster agnosticv workload bootstraps `infra/bootstrap`. The tenant
 workload bootstraps `tenant/bootstrap`, which creates an Argo CD Application
-for `tenant/deploy/helm/rag` in this repository and, when `it-selfsvc` is
-configured, a second Application for `it-selfsvc/chart`. The Applications
+for `tenant/rag` in this repository and, when configured,
+Applications for `tenant/it-selfsvc/chart` and `tenant/multimodal/chart`. The Applications
 deploy into separate tenant namespaces. Cluster operators are managed by
 agnosticv; the infra chart is a marker for the integration point.
+
+## Image digests
+
+`image-lock.json` records reviewed registry digests for the supported chart
+images. Helm templates use the digest when an image matches the lock; images
+already specified with `@sha256:` are accepted, and an unrecognized image fails
+rendering. The chart refresh scripts reapply the lock to copied templates and
+packaged dependencies. To update a pin, resolve the desired image on its registry,
+review and update the lock, and regenerate the templates:
+
+```sh
+skopeo inspect --override-os linux --override-arch amd64 \
+  --format '{{.Digest}}' docker://<image>:<tag>
+python3 automation/gitops/image_pins.py
+```
+
+Two RAG images remain tag-based: the cluster's OpenShift tools and OpenShift AI
+notebook image streams. Their digest must be checked on the target cluster before
+pinning, since a digest from another cluster may not exist in its local registry.
+The optional IT Self Service Langfuse configuration currently cannot render
+because its upstream MinIO images were unavailable for digest verification. Set
+`langfuse.minio.image` and `langfuse.minio.clientImage` to verified digest-pinned
+images to enable it. Image overrides must use a reviewed digest or have an entry
+in the lock.
 
 ## IT Self Service
 
@@ -37,13 +61,13 @@ To refresh the copy, install Git, Helm, Python 3 and PyYAML, then run:
 
 ```sh
 python3 automation/gitops/update-it-selfsvc.py --ref v0.0.13
-git diff -- automation/gitops/it-selfsvc
-git status --short automation/gitops/it-selfsvc
+git diff -- automation/gitops/tenant/it-selfsvc
+git status --short automation/gitops/tenant/it-selfsvc
 ```
 
 The command clones the upstream repository and downloads the locked chart
 dependencies, including the nested Zammad dependency. It records the source
-commit in `it-selfsvc/source.json`. For an offline refresh use
+commit in `tenant/it-selfsvc/source.json`. For an offline refresh use
 `--source /path/to/it-self-service-agent --dependency-dir /path/to/helm/charts`.
 Review changes to the upstream demo chart and jobs before deploying a new version.
 
@@ -51,14 +75,44 @@ The tenant bootstrap accepts `it-selfsvc.namespace`, `it-selfsvc.git.revision`,
 and `it-selfsvc.model` fields `id`, `url`, and `apiToken`, plus optional native
 Helm overrides in `it-selfsvc.values`. Set `it-selfsvc.model.name` to a simple
 provider name when the model ID contains slashes; it defaults to the model ID.
-The agnosticv tenant configuration provides these values and provisions `user-<guid>-it-svc` alongside
+The agnosticv tenant configuration provides these values and provisions `user-<guid>-it-selfsvc` alongside
 `user-<guid>-rag`. The model token is rendered into a Kubernetes Secret rather
 than the Llama Stack ConfigMap, but is still present in the Argo CD Application
 values; restrict access to those Applications.
 
-Agnosticv supplies `litellm_virtual_key` to both quickstarts along with the
+Agnosticv supplies `litellm_virtual_key` to all three quickstarts along with the
 model and inference URL. The RAG chart currently renders that token directly
 into its Llama Stack ConfigMap as well as the Argo CD Application values.
+
+## Multimodal compliance monitor
+
+The optional `ppe` values create a `ppe-<guid>` Application in the dedicated
+`user-<guid>-ppe` namespace. It uses the OpenVINO CPU runtime and requires the
+OpenShift AI KServe components, storage, network access to the images and
+Python packages used by initialization jobs. The chart creates object storage,
+seeds its model and sample videos, and creates an inference service. Argo CD
+sync hooks run the initialization jobs and recreate them on later syncs.
+
+Agnosticv supplies the LiteLLM URL, model and virtual key, the storage and UI
+credentials, and the shared frontend/backend route. It also raises the shared
+tenant quota for PPE's model server and workspaces. Size the cluster separately:
+quota limits do not reserve capacity. The PPE key is rendered to a Kubernetes
+Secret for the backend, but the token and other credentials remain in Argo CD
+Application values. Restrict access to those Applications.
+
+To refresh the copied chart and locked dependencies:
+
+```sh
+python3 automation/gitops/update-multimodal.py --ref main
+git diff -- automation/gitops/tenant/multimodal
+git status --short automation/gitops/tenant/multimodal
+```
+
+Use `--source /path/to/multimodal-compliance-monitor` to clone a local checkout
+and `--dependency-dir /path/to/packages` for an offline refresh. Only committed
+upstream files are copied. Review the `source.json` commit, all chart changes,
+and the initialization-job and Secret adaptations before deployment. The
+upstream image tags include `latest`; the image lock supplies their digests.
 
 ## RAG
 
@@ -75,9 +129,10 @@ records the resolved commit in `rag-source.json`, copies `infra/`, `tenant/`,
 and `deploy/helm/rag/`, and builds the Helm dependencies from `Chart.lock`.
 It also copies upstream's Llama Stack and Playwright tests into
 `upstream-rag-tests/` at the same commit. It resets the copied tenant chart's Git URL and path to this repository. The
-local infra bootstrap is preserved. The copied tenant and infra files are
-replaced on refresh, so review and commit local changes before running it.
-The locally maintained IT Self Service Application template, the RAG
+local infra bootstrap and the other two tenant charts are preserved. The copied
+RAG tenant and infra files are replaced on refresh, so review and commit local
+changes before running it.
+The locally maintained IT Self Service and multimodal Application templates, the RAG
 `tenant-` Application-name prefix, and Argo CD comparisons for the generated
 Route hostname and OpenShift AI Notebook additions are preserved during a RAG
 refresh.
@@ -104,7 +159,7 @@ AGNOSTICV_TENANT_CONFIG=/path/to/agnosticv/rh1-2027/lb2142-ai-quickstarts-tenant
 ```
 
 This renders the agnosticv values using Ansible and checks both bootstrap
-Applications and the resulting RAG and IT Self Service Helm resources. It does not
+Applications and the resulting RAG, IT Self Service and PPE Helm resources. It does not
 contact a cluster or use real credentials.
 
 For a live end-to-end test, install the browser dependency and Chromium:

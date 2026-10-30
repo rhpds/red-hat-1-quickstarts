@@ -1,0 +1,231 @@
+{{/* Render once for both the immutable Job template and its name hash. */}}
+{{- define "ppe-compliance-monitor.runtimeDeployerPodTemplate" -}}
+{{- $saName := printf "%s-runtime-deployer" (include "ppe-compliance-monitor.fullname" .) -}}
+metadata:
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime-deployer
+spec:
+  serviceAccountName: {{ $saName }}
+  restartPolicy: OnFailure
+  containers:
+    - name: runtime-deployer
+      image: {{ include "rh1.pinnedImage" (printf "%v/%v:%v" (.Values.global.imageRegistry) (.Values.runtimeDeployer.image.repository) (.Values.runtimeDeployer.image.tag)) | quote }}
+      imagePullPolicy: {{ .Values.runtimeDeployer.image.pullPolicy }}
+      env:
+        - name: NAMESPACE
+          value: {{ .Release.Namespace }}
+        - name: RUNTIME_TYPE
+          value: {{ .Values.modelServing.runtimeType | quote }}
+        - name: DEPLOY_MODEL
+          value: "true"
+        - name: S3_BUCKET
+          value: {{ .Values.storage.model.bucket | quote }}
+        {{- if or (and (eq .Values.modelServing.runtimeType "openvino") .Values.modelServing.openvino.multiModel) (and (eq .Values.modelServing.runtimeType "kserve") .Values.modelServing.kserve.multiModel) }}
+        - name: MULTI_MODEL_SERVING
+          value: "true"
+        - name: INFERENCE_SERVICE_NAME
+          value: {{ .Values.runtimeDeployer.inferenceServiceName | quote }}
+        {{- end }}
+        - name: S3_MODEL_PATH
+        {{- if and (eq .Values.modelServing.runtimeType "openvino") .Values.modelServing.openvino.multiModel }}
+          value: {{ .Values.modelServing.openvino.multiModelStoragePath | quote }}
+        {{- else if and (eq .Values.modelServing.runtimeType "kserve") .Values.modelServing.kserve.multiModel }}
+          value: {{ .Values.modelServing.kserve.multiModelStoragePath | quote }}
+        {{- else if eq .Values.modelServing.runtimeType "kserve" }}
+          value: {{ .Values.modelServing.kserve.modelPath | quote }}
+        {{- else }}
+          value: {{ .Values.modelServing.openvino.modelPath | quote }}
+        {{- end }}
+        {{- include "ppe-compliance-monitor.s3Env" . | nindent 8 }}
+        - name: MODEL_NAME
+          value: {{ .Values.runtimeDeployer.modelName | default "ppe" | quote }}
+        - name: MODEL_VERSION
+          value: {{ .Values.backend.modelVersion | quote }}
+        {{- if eq .Values.modelServing.runtimeType "kserve" }}
+        - name: MODEL_FORMAT
+          value: {{ .Values.modelServing.kserve.modelFormat.name | quote }}
+        - name: MODEL_FORMAT_VERSION
+          value: {{ .Values.modelServing.kserve.modelFormat.version | quote }}
+        - name: SERVING_RUNTIME_IMAGE
+          value: {{ include "rh1.pinnedImage" .Values.modelServing.kserve.image | quote }}
+        - name: REST_PORT
+          value: {{ .Values.modelServing.kserve.restPort | quote }}
+        - name: GRPC_PORT
+          value: {{ .Values.modelServing.kserve.grpcPort | quote }}
+        - name: RUNTIME_ARGS
+          value: {{ .Values.modelServing.kserve.args | toJson | quote }}
+        - name: RUNTIME_COMMAND
+          value: {{ .Values.modelServing.kserve.command | toJson | quote }}
+        - name: RUNTIME_ENV
+          value: {{ .Values.modelServing.kserve.env | toJson | quote }}
+        - name: RUNTIME_TEMPLATE_NAME
+          value: {{ .Values.modelServing.kserve.templateName | quote }}
+        - name: RUNTIME_TEMPLATE_DISPLAY_NAME
+          value: {{ .Values.modelServing.kserve.templateDisplayName | quote }}
+        {{- if .Values.modelServing.kserve.gpu.enabled }}
+        - name: GPU_ENABLED
+          value: "true"
+        - name: GPU_COUNT
+          value: {{ .Values.modelServing.kserve.gpu.count | quote }}
+        - name: GPU_TOLERATIONS
+          value: {{ .Values.modelServing.kserve.gpu.tolerations | toJson | quote }}
+        {{- end }}
+        {{- else }}
+        - name: MODEL_FORMAT
+          value: {{ .Values.modelServing.openvino.modelFormat.name | quote }}
+        - name: MODEL_FORMAT_VERSION
+          value: {{ .Values.modelServing.openvino.modelFormat.version | quote }}
+        - name: SERVING_RUNTIME_IMAGE
+          value: {{ include "rh1.pinnedImage" (printf "%v" (.Values.modelServing.openvino.image)) | quote }}
+        - name: REST_PORT
+          value: {{ .Values.modelServing.openvino.restPort | quote }}
+        - name: GRPC_PORT
+          value: {{ .Values.modelServing.openvino.grpcPort | quote }}
+        {{- end }}
+        - name: CREATE_SERVING_RUNTIME
+          value: "true"
+        - name: REPLICAS_MIN
+          value: {{ .Values.modelServing.replicas.min | quote }}
+        - name: REPLICAS_MAX
+          value: {{ .Values.modelServing.replicas.max | quote }}
+        - name: RESOURCE_REQ_CPU
+          value: {{ .Values.modelServing.resources.requests.cpu | quote }}
+        - name: RESOURCE_REQ_MEMORY
+          value: {{ .Values.modelServing.resources.requests.memory | quote }}
+        - name: RESOURCE_LIM_CPU
+          value: {{ .Values.modelServing.resources.limits.cpu | quote }}
+        - name: RESOURCE_LIM_MEMORY
+          value: {{ .Values.modelServing.resources.limits.memory | quote }}
+{{- end -}}
+{{- if .Values.runtimeDeployer.enabled }}
+{{- $fullName := include "ppe-compliance-monitor.fullname" . }}
+{{- $saName := printf "%s-runtime-deployer" $fullName }}
+{{- $podTemplate := include "ppe-compliance-monitor.runtimeDeployerPodTemplate" . }}
+{{- /* Jobs cannot update their Pod templates. Also rerun when managed credentials rotate. */}}
+{{- $jobHash := printf "%s:%s" $podTemplate (toJson .Values.s3Credentials) | sha256sum | trunc 8 }}
+#
+# ──────────────────────────────────────────────
+# 1. SecurityContextConstraints
+# ──────────────────────────────────────────────
+
+{{- if .Values.runtimeDeployer.scc.enabled }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ $saName }}-scc
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime-deployer
+allowPrivilegeEscalation: false
+runAsUser:
+  type: MustRunAsRange
+seLinuxContext:
+  type: MustRunAs
+fsGroup:
+  type: MustRunAs
+supplementalGroups:
+  type: RunAsAny
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - projected
+  - secret
+users:
+  - system:serviceaccount:{{ .Release.Namespace }}:{{ $saName }}
+{{- end }}
+
+---
+# ──────────────────────────────────────────────
+# 2. ServiceAccount
+# ──────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $saName }}
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime-deployer
+
+---
+# ──────────────────────────────────────────────
+# 3. Role  –  permissions for create_runtime.py
+# ──────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $saName }}
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime-deployer
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "serviceaccounts"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["servingruntimes", "inferenceservices"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+---
+# ──────────────────────────────────────────────
+# 4. RoleBinding
+# ──────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $saName }}
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $saName }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $saName }}
+    namespace: {{ .Release.Namespace }}
+
+{{- if .Values.runtimeDeployer.scc.enabled }}
+---
+# ──────────────────────────────────────────────
+# 5. RoleBinding  –  SCC
+# ──────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $saName }}-scc
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:{{ $saName }}-scc
+subjects:
+  - kind: ServiceAccount
+    name: {{ $saName }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+
+---
+# ──────────────────────────────────────────────
+# 6. Job  –  runs create_runtime.py
+# ──────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-%s" ($saName | trunc 54 | trimSuffix "-") $jobHash }}
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime-deployer
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    {{- $podTemplate | nindent 4 }}
+{{- end }}

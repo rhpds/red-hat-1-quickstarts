@@ -30,7 +30,7 @@ spec:
   source:
     repoURL: {{ $git.url | default "https://github.com/rhpds/red-hat-1-quickstarts.git" | quote }}
     targetRevision: {{ $git.revision | default "main" | quote }}
-    path: automation/gitops/it-selfsvc/chart
+    path: {{ $git.path | default "automation/gitops/tenant/it-selfsvc/chart" | quote }}
     helm:
       releaseName: self-service-agent
       valueFiles:

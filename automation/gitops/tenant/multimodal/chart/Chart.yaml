@@ -1,0 +1,23 @@
+apiVersion: v2
+name: ppe-compliance-monitor
+description: Deploy the PPE compliance monitor backend and frontend
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+dependencies:
+  # External dependencies from remote repositories
+  - name: aws-compatible-storage
+    version: 0.2.0
+    repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
+    condition: aws-compatible-storage.enabled
+  - name: label-studio
+    version: 0.1.0
+    repository: file://../label-studio
+    alias: labelStudio
+    condition: labelStudio.enabled
+  - name: jupyter-training
+    version: 0.1.0
+    repository: file://../jupyter-training
+    alias: jupyter-training
+    condition: jupyter-training.enabled

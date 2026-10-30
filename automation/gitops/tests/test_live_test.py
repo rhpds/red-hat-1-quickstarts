@@ -10,7 +10,7 @@ spec.loader.exec_module(live_test)
 
 class GitOpsValidationTests(unittest.TestCase):
     def setUp(self):
-        self.path = "automation/gitops/tenant/deploy/helm/rag"
+        self.path = "automation/gitops/tenant/rag"
         self.app = {"spec": {"source": {"repoURL": live_test.REPO + ".git", "path": self.path},
                              "destination": {"namespace": "test"}},
                     "status": {"sync": {"status": "Synced", "revision": "commit-a"}, "health": {"status": "Healthy"}}}

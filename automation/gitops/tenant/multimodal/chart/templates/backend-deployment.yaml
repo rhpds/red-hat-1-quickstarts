@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ppe-compliance-monitor.fullname" . }}-backend
+  labels:
+    {{- include "ppe-compliance-monitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ppe-compliance-monitor.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      annotations:
+        checksum/openai-token: {{ .Values.openai.apiToken | sha256sum | quote }}
+      labels:
+        {{- include "ppe-compliance-monitor.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      {{- $waitVideo := not .Values.videoStream.streamUrl }}
+      {{- $waitMcp := and .Values.postgresql.enabled .Values.postgresMcp.enabled }}
+      {{- if or $waitVideo $waitMcp }}
+      initContainers:
+        {{- if $waitVideo }}
+        - name: wait-for-video-stream
+          image: {{ include "rh1.pinnedImage" (printf "%v:%v" (.Values.initUtils.busybox.repository) (.Values.initUtils.busybox.tag)) | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for video-stream service..."
+              until nc -z {{ include "ppe-compliance-monitor.fullname" . }}-video-stream {{ .Values.videoStream.port }}; do
+                echo "Video stream not ready, retrying in 2s..."
+                sleep 2
+              done
+              echo "Video stream is ready"
+        {{- end }}
+        {{- if $waitMcp }}
+        - name: wait-for-postgres-mcp
+          image: {{ include "rh1.pinnedImage" (printf "%v:%v" (.Values.initUtils.busybox.repository) (.Values.initUtils.busybox.tag)) | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for postgres-mcp on port {{ .Values.postgresMcp.port }}..."
+              until nc -z {{ include "ppe-compliance-monitor.fullname" . }}-postgres-mcp {{ .Values.postgresMcp.port }}; do
+                echo "postgres-mcp not ready, retrying in 2s..."
+                sleep 2
+              done
+              echo "postgres-mcp is ready"
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: backend
+          image: {{ include "rh1.pinnedImage" (printf "%v/%v:%v" (.Values.global.imageRegistry) (.Values.backend.image.repository) (.Values.backend.image.tag)) | quote }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command: ["python", "/backend/app.py"]
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          ports:
+            - containerPort: {{ .Values.backend.port }}
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /api/
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          env:
+            - name: CORS_ORIGINS
+              value: {{ default (printf "http://%s-frontend:%d" (include "ppe-compliance-monitor.fullname" .) .Values.frontend.port) .Values.backend.corsOrigins | quote }}
+            {{- include "ppe-compliance-monitor.s3Env" . | nindent 12 }}
+            - name: MODEL_PATH
+              value: "/data/models/{{ .Values.storage.model.key }}"
+            - name: MODEL_INPUT_NAME
+              {{- if eq .Values.modelServing.runtimeType "kserve" }}
+              value: {{ .Values.modelServing.kserve.modelInputName | quote }}
+              {{- else }}
+              value: {{ .Values.backend.modelInputName | quote }}
+              {{- end }}
+            - name: MODEL_VERSION
+              value: {{ .Values.backend.modelVersion | quote }}
+            - name: OPENSHIFT
+              value: "true"
+            - name: RUNTIME_TYPE
+              value: {{ .Values.modelServing.runtimeType | quote }}
+            - name: OPENAI_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ppe-compliance-monitor.fullname" . }}-openai
+                  key: api-token
+            - name: OPENAI_API_ENDPOINT
+              value: {{ .Values.openai.apiEndpoint | quote }}
+            - name: OPENAI_MODEL
+              value: {{ .Values.openai.model | quote }}
+            - name: OPENAI_TEMPERATURE
+              value: {{ .Values.openai.temperature | quote }}
+            {{- if .Values.postgresql.enabled }}
+            - name: DB_HOST
+              value: {{ .Values.postgresql.host | default (printf "%s-postgresql" (include "ppe-compliance-monitor.fullname" .)) | quote }}
+            - name: DB_PORT
+              value: {{ .Values.postgresql.port | quote }}
+            - name: DB_NAME
+              value: {{ .Values.postgresql.database | quote }}
+            - name: DB_USER
+              value: {{ .Values.postgresql.user | quote }}
+            - name: DB_PASSWORD
+              value: {{ .Values.postgresql.password | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.logLevel | quote }}
+            {{- if and .Values.backend.configStorage .Values.backend.configStorage.enabled }}
+            - name: CONFIG_BUCKET
+              value: config
+            {{- end }}
+            - name: DEFAULT_OVMS_MODEL_URL
+              value: {{ .Values.backend.defaultOvmsModelUrl | default "http://ppe-predictor:9000" | quote }}
+            - name: OVMS_GRPC_TIMEOUT
+              value: {{ .Values.backend.ovmsGrpcTimeout | default "60" | quote }}
+            - name: VIDEO_BUCKET
+              value: {{ .Values.storage.video.bucket | default "data" | quote }}
+            {{- if .Values.postgresMcp.enabled }}
+            - name: POSTGRES_MCP_URL
+              value: "http://{{ include "ppe-compliance-monitor.fullname" . }}-postgres-mcp:{{ .Values.postgresMcp.port }}/sse"
+            {{- end }}
+            {{- end }}
