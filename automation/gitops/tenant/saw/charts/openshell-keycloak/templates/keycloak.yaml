@@ -1,0 +1,31 @@
+{{- if not .Values.keycloak.existing }}
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: Keycloak
+metadata:
+  name: {{ .Values.keycloak.name }}
+spec:
+  instances: {{ .Values.keycloak.instances }}
+  db:
+    vendor: postgres
+    host: keycloak-db
+    usernameSecret:
+      name: keycloak-db-secret
+      key: username
+    passwordSecret:
+      name: keycloak-db-secret
+      key: password
+    database: {{ .Values.postgres.database }}
+  http:
+    httpEnabled: true
+  ingress:
+    enabled: true
+    className: openshift-default
+    annotations:
+      route.openshift.io/termination: edge
+  {{- if .Values.keycloak.hostname }}
+  hostname:
+    hostname: {{ .Values.keycloak.hostname }}
+  {{- end }}
+  proxy:
+    headers: xforwarded
+{{- end }}

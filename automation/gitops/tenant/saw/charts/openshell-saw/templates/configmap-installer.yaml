@@ -1,0 +1,164 @@
+{{- /*
+Everything the in-guest installer needs except credentials. Attached to the
+VM as a read-only disk and mounted at /run/saw/installer on every boot, so
+changes here reach an existing VM after a restart (unlike cloud-init).
+*/ -}}
+{{- range $name, $c := .Values.bom.spec.openshell }}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$" ($c.image | default "")) }}
+{{- fail (printf "bom.spec.openshell.%s.image must be pinned by digest (repo@sha256:...), got %q" $name ($c.image | default "")) }}
+{{- end }}
+{{- end }}
+{{- if contains "PRIVATE KEY-----" (.Values.oidc.caBundle | default "") }}
+{{- fail "oidc.caBundle contains a private key: give only the CA certificate(s), e.g. the ca-bundle.crt of default-ingress-cert, never a TLS Secret" }}
+{{- end }}
+{{- $registry := .Values.registry | default dict }}
+{{- $registryHost := $registry.host | default "" }}
+{{- $registryCa := $registry.caBundle | default "" }}
+{{- $registryCaBase64 := $registry.caBundleBase64 | default "" }}
+{{- $registrySecret := $registry.authSecret | default "" }}
+{{- if and $registryCa $registryCaBase64 }}
+{{- fail "set only one of registry.caBundle and registry.caBundleBase64" }}
+{{- end }}
+{{- if $registryCaBase64 }}
+{{- if not (regexMatch "^[A-Za-z0-9+/]+={0,2}$" $registryCaBase64) }}
+{{- fail "registry.caBundleBase64 must contain base64-encoded PEM" }}
+{{- end }}
+{{- $registryCa = b64dec $registryCaBase64 }}
+{{- if not (contains "-----BEGIN CERTIFICATE-----" $registryCa) }}
+{{- fail "registry.caBundleBase64 must encode PEM certificate(s)" }}
+{{- end }}
+{{- end }}
+{{- if contains "PRIVATE KEY-----" $registryCa }}
+{{- fail "registry CA contains a private key: give only the registry CA certificate" }}
+{{- end }}
+{{- if and (or $registryCa $registrySecret) (not $registryHost) }}
+{{- fail "registry.host is required when registry.caBundle or registry.authSecret is set" }}
+{{- end }}
+{{- $providerNames := concat (list .Values.inference.secretName) (.Values.additionalProviderSecrets | default list) | compact }}
+{{- if and $registrySecret (or (has $registrySecret $providerNames) (hasSuffix "-meta" $registrySecret)) }}
+{{- fail "registry.authSecret must name a dedicated pull-token Secret, not a provider Secret or its -meta copy" }}
+{{- end }}
+{{- $oidcIssuer := include "openshell-sandbox.oidcIssuerUrl" . }}
+{{- $webuiHost := include "openshell-sandbox.auxRouteHost" (list . "webui" .Values.route.webuiHost) }}
+{{- $dashboardHost := include "openshell-sandbox.auxRouteHost" (list . "dashboard" .Values.route.dashboardHost) }}
+{{- $sandboxRoute := "" }}
+{{- if and .Values.route.dashboard $dashboardHost }}{{- $sandboxRoute = $dashboardHost }}{{- end }}
+{{- $redirectUrl := "" }}
+{{- if $webuiHost }}{{- $redirectUrl = printf "https://%s/oauth2/callback" $webuiHost }}{{- end }}
+{{- $dashboardEnabled := false }}
+{{- if and .Values.oidc.enabled .Values.dashboard.enabled .Values.route.webui }}{{- $dashboardEnabled = true }}{{- end }}
+{{- $signMode := .Values.signing.mode | default "warn" }}
+{{- if not (or (eq $signMode "off") (eq $signMode "warn") (eq $signMode "enforce")) }}
+{{- fail (printf "signing.mode must be off, warn, or enforce, got %q" $signMode) }}
+{{- end }}
+{{- $trustKeys := .Values.signing.trustKeys | default list }}
+{{- $signIdentity := .Values.signing.identity | default "" }}
+{{- $signIssuer := .Values.signing.issuer | default "" }}
+{{- $pruneMode := .Values.prune.mode | default "report" }}
+{{- if not (or (eq $pruneMode "off") (eq $pruneMode "report") (eq $pruneMode "on")) }}
+{{- fail (printf "prune.mode must be off, report, or on, got %q" $pruneMode) }}
+{{- end }}
+{{- if and (eq $signMode "enforce") (not $trustKeys) (or (not $signIdentity) (not $signIssuer)) }}
+{{- fail "signing.mode enforce requires signing.trustKeys or both signing.identity and signing.issuer" }}
+{{- end }}
+{{- $trusted := .Values.sandboxUiProxy.trustedProxy | default dict }}
+{{- $bindings := list }}
+{{- $attached := concat (list .Values.inference.secretName) (.Values.additionalProviderSecrets | default list) | compact }}
+{{- range .Values.credentialProxy.secrets }}
+{{- if has .name $attached }}{{- $bindings = append $bindings . }}{{- end }}
+{{- end }}
+{{- $config := dict
+      "vmName" (include "openshell-sandbox.fullname" .)
+      "namespace" .Release.Namespace
+      "runtimeUser" "cloud-user"
+      "mtlsGateway" "saw-installer"
+      "relayGateway" "saw-relay"
+      "credentialProxy" (dict
+          "url" (printf "http://%s-credential-proxy.%s.svc.cluster.local:3128" (include "openshell-sandbox.fullname" .) .Release.Namespace)
+          "markerPrefix" "saw-cred"
+          "secrets" $bindings)
+      "gatewayPki" (dict "generation" .Values.gatewayPki.generation)
+      "ownerSubject" (.Values.accessControl.ownerSubject | default "")
+      "ownerSubjectSource" (.Values.accessControl.ownerSubjectSource | default "")
+      "oidcIssuer" $oidcIssuer
+      "caBundle" (.Values.oidc.caBundle | default "")
+      "caBundleSecret" (include "openshell-sandbox.caBundleSecret" .)
+      "registry" (dict "host" $registryHost "caBundle" $registryCa "authSecret" $registrySecret)
+      "routeHost" (include "openshell-sandbox.routeHost" .)
+      "sandboxDashboardRoute" $sandboxRoute
+      "dashboard" (dict
+          "enabled" $dashboardEnabled
+          "image" .Values.dashboard.image
+          "proxyImage" .Values.dashboard.proxyImage
+          "clientId" .Values.dashboard.clientId
+          "redirectUrl" $redirectUrl
+          "owner" (.Values.accessControl.owner | default "")
+          "allowedUsers" (prepend (.Values.accessControl.dashboardSupportUsers | default list) (.Values.accessControl.owner | default "") | compact | uniq)
+          "insecureSkipTlsVerify" (.Values.dashboard.insecureSkipIssuerTlsVerify | default false))
+      "signing" (dict "mode" $signMode "trustKeys" $trustKeys "identity" $signIdentity "issuer" $signIssuer)
+      "harness" (dict "cosign" (dict
+          "identity" (.Values.harness.cosign.identity | default "")
+          "issuer" (.Values.harness.cosign.issuer | default "https://token.actions.githubusercontent.com")
+          "cacheTtlSeconds" (.Values.harness.cosign.cacheTtlSeconds)))
+      "prune" (dict "mode" $pruneMode "sandboxes" (.Values.prune.sandboxes | default false))
+      "secrets" (include "openshell-sandbox.providerSecrets" . | fromJsonArray)
+      "sandboxUi" (include "openshell-sandbox.sandboxUi" . | fromJsonArray)
+      "sandboxUiProxy" (dict
+          "targetPort" (int .Values.sandboxUiProxy.targetPort)
+          "allowedUsers" (prepend (.Values.sandboxUiProxy.allowedUsers | default list) .Values.accessControl.owner | compact | uniq)
+          "image" .Values.dashboard.proxyImage
+          "clientId" .Values.dashboard.clientId
+          "insecureSkipTlsVerify" (.Values.dashboard.insecureSkipIssuerTlsVerify | default false)
+          "trustedProxy" (dict
+              "enabled" (eq (toString $trusted.enabled) "true")
+              "cidrs" ($trusted.cidrs | default (list "127.0.0.1/32" "::1/128"))
+              "deviceAutoApprove" (ne (toString $trusted.deviceAutoApprove) "false"))) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openshell-sandbox.fullname" . }}-installer
+  labels:
+    {{- include "openshell-sandbox.labels" . | nindent 4 }}
+  annotations:
+    # This ConfigMap's data is ~300 KiB. When Argo CD client-side-applies it,
+    # it writes a last-applied-configuration annotation that exceeds the 256 KiB
+    # metadata limit and the sync fails. On OpenShift GitOps on OCP 5.0 the Argo
+    # controller does not apply server-side (managedFields come back empty), so
+    # the per-resource ServerSideApply=true sync-option hits the same path and
+    # does not help; Replace the object (a full PUT, no last-applied annotation)
+    # instead. On clusters where SSA works, ServerSideApply=true is preferable.
+    argocd.argoproj.io/sync-options: Replace=true
+data:
+  installer-bom.yaml: |
+{{ toYaml .Values.bom | indent 4 }}
+  config.json: |
+{{ toPrettyJson $config | indent 4 }}
+  gateway.env: |
+{{ include "openshell-sandbox.gatewayEnv" . | indent 4 }}
+  gateway.toml: |
+{{ include "openshell-sandbox.gatewayToml" . | indent 4 }}
+  saw-gateway-pki: |
+{{ .Files.Get "files/guest/saw-gateway-pki" | indent 4 }}
+  openshell-gateway-pki.conf: |
+{{ .Files.Get "files/guest/openshell-gateway-pki.conf" | indent 4 }}
+  apply_bom.py: |
+{{ .Files.Get "files/installer/apply_bom.py" | indent 4 }}
+  tool-actions.yaml: |
+{{ .Files.Get "files/installer/tool-actions.yaml" | indent 4 }}
+  tool-gate.mjs: |
+{{ .Files.Get "files/installer/tool-gate.mjs" | indent 4 }}
+  tool-gate-plugin.mjs: |
+{{ .Files.Get "files/installer/tool-gate-plugin.mjs" | indent 4 }}
+  setup-dashboard.sh: |
+{{ .Files.Get "files/installer/setup-dashboard.sh" | indent 4 }}
+{{- if .Files.Get "files/installer/bundle.sigstore.json" }}
+  bundle.sigstore.json: |
+{{ .Files.Get "files/installer/bundle.sigstore.json" | indent 4 }}
+{{- end }}
+{{- /* Provider profiles the installer imports when the gateway lacks them
+(governance off). A mirror of governance-policy/profiles/*.yaml kept by
+scripts/saw-profile-catalog.py (`make catalog`); CI fails when it is stale. */}}
+{{- range $path, $_ := .Files.Glob "files/provider-profiles/*.yaml" }}
+  provider-profile-{{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}

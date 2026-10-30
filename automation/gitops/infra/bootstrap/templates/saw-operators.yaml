@@ -1,0 +1,48 @@
+{{- if eq (lower (toString .Values.saw.enabled)) "true" }}
+{{- $saw := .Values.saw }}
+{{- range $name := list "external-secrets-operator" "external-secrets" "openshift-cnv" "saw-keycloak" "openshell-agents" "vault" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $name }}
+  labels:
+    argocd.argoproj.io/managed-by: {{ $saw.gitopsNamespace | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+{{- end }}
+{{- range $operator := list
+  (dict "namespace" "external-secrets-operator" "name" "openshift-external-secrets-operator" "channel" $saw.operators.externalSecretsChannel "allNamespaces" true)
+  (dict "namespace" "openshift-cnv" "name" "kubevirt-hyperconverged" "channel" $saw.operators.virtualizationChannel)
+  (dict "namespace" "saw-keycloak" "name" "rhbk-operator" "channel" $saw.operators.keycloakChannel) }}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: {{ $operator.namespace }}
+  namespace: {{ $operator.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  {{- if not $operator.allNamespaces }}
+  targetNamespaces:
+    - {{ $operator.namespace }}
+  {{- else }}
+  targetNamespaces: []
+  {{- end }}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ $operator.name }}
+  namespace: {{ $operator.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  channel: {{ $operator.channel | quote }}
+  installPlanApproval: Automatic
+  name: {{ $operator.name }}
+  source: {{ $saw.operators.source | quote }}
+  sourceNamespace: {{ $saw.operators.sourceNamespace | quote }}
+{{- end }}
+{{- end }}

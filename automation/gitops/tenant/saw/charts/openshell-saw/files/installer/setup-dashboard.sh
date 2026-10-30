@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Runs OpenShell Dashboard + oauth2-proxy inside the VM via the configured
+# container runtime (docker or podman), managed as `systemctl --user` services.
+# Requires OIDC to be configured on the gateway (the dashboard's gRPC client
+# has no mTLS support).
+set -euo pipefail
+umask 077
+
+: "${RUNTIME:?RUNTIME not set — must be docker or podman}"
+case "${RUNTIME}" in
+  docker|podman) ;;
+  *) echo "Error: RUNTIME must be docker or podman." >&2; exit 1 ;;
+esac
+
+if [[ "${DASHBOARD_ENABLED:-false}" != "true" ]]; then
+  echo "Dashboard disabled, skipping."
+  exit 0
+fi
+
+if [[ -z "${OIDC_ISSUER:-}" ]]; then
+  echo "Dashboard skipped: oidc.issuerUrl not configured (deploy Keycloak and set oidc.issuerUrl to enable)."
+  exit 0
+fi
+
+: "${DASHBOARD_IMAGE:?}"
+: "${DASHBOARD_PROXY_IMAGE:?}"
+: "${DASHBOARD_COOKIE_SECRET:?}"
+: "${DASHBOARD_REDIRECT_URL:?DASHBOARD_REDIRECT_URL not set — was the *-webui route created?}"
+: "${DASHBOARD_ALLOWED_USERS:?DASHBOARD_ALLOWED_USERS must include the owner}"
+DASHBOARD_CLIENT_ID="${DASHBOARD_CLIENT_ID:-openshell-dashboard}"
+
+mkdir -p "${HOME}/.config/systemd/user" "${HOME}/.config/openshell"
+printf '%s\n' "${DASHBOARD_ALLOWED_USERS//,/$'\n'}" > "${HOME}/.config/openshell/dashboard-users"
+# oauth2-proxy runs as a different UID inside Podman.  The mounted file
+# contains account names only; the proxy must be able to read it.
+chmod 644 "${HOME}/.config/openshell/dashboard-users"
+
+# Copy just the CA cert (public, not sensitive — never the private key) to a
+# dedicated, world-readable location instead of exposing the whole TLS dir.
+CA_SRC="${HOME}/.local/state/openshell/tls/ca.crt"
+CA_FOR_DASHBOARD="${HOME}/.config/openshell/dashboard-gateway-ca.crt"
+if [[ -f "${CA_SRC}" ]]; then
+  install -m 0644 "${CA_SRC}" "${CA_FOR_DASHBOARD}"
+else
+  echo "Error: gateway CA cert not found at ${CA_SRC}." >&2
+  exit 1
+fi
+chmod o+x "${HOME}" "${HOME}/.config" "${HOME}/.config/openshell"
+
+cat > "${HOME}/.config/openshell/dashboard.env" <<ENVEOF
+PORT=8090
+OPENSHELL_GATEWAY_URL=grpcs://localhost:17670
+GATEWAY_CA_CERT=/tls/ca.crt
+AUTH_DISABLED=false
+ADMIN_ROLE=openshell-admin
+ENVEOF
+
+# The issuer CA (oidc.caBundle / oidc.clusterCaSecret), when one is
+# configured, for the proxy's calls to the issuer only (provider CA files):
+# never the container's or the VM's system store.
+CA_MOUNT=""
+CA_ENV=""
+if [[ -n "${DASHBOARD_ISSUER_CA:-}" && -r "${DASHBOARD_ISSUER_CA}" ]]; then
+  CA_MOUNT="-v ${DASHBOARD_ISSUER_CA}:/etc/saw/issuer-ca.pem:ro,z"
+  CA_ENV="OAUTH2_PROXY_PROVIDER_CA_FILES=/etc/saw/issuer-ca.pem"
+fi
+
+cat > "${HOME}/.config/openshell/dashboard-proxy.env" <<ENVEOF
+OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:8080
+OAUTH2_PROXY_UPSTREAMS=http://localhost:8090
+OAUTH2_PROXY_PROVIDER=oidc
+OAUTH2_PROXY_OIDC_ISSUER_URL=${OIDC_ISSUER}
+OAUTH2_PROXY_CLIENT_ID=${DASHBOARD_CLIENT_ID}
+OAUTH2_PROXY_CLIENT_SECRET_FILE=/dev/null
+OAUTH2_PROXY_REDIRECT_URL=${DASHBOARD_REDIRECT_URL}
+OAUTH2_PROXY_COOKIE_SECRET=${DASHBOARD_COOKIE_SECRET}
+OAUTH2_PROXY_PASS_ACCESS_TOKEN=true
+OAUTH2_PROXY_CODE_CHALLENGE_METHOD=S256
+OAUTH2_PROXY_OIDC_EMAIL_CLAIM=preferred_username
+OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/saw/dashboard-users
+OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+OAUTH2_PROXY_COOKIE_SECURE=true
+OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY=${DASHBOARD_INSECURE_SKIP_TLS:-false}
+${CA_ENV}
+# oauth2-proxy rejects the id_token by default if the OIDC provider's
+# email_verified claim is false — true for real SSO-federated Keycloak
+# accounts.
+OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true
+# Enable cookie refresh so oauth2-proxy renews tokens via the refresh token
+# Keycloak issues by default.
+OAUTH2_PROXY_SCOPE=openid email profile
+OAUTH2_PROXY_COOKIE_REFRESH=60s
+ENVEOF
+chmod 600 "${HOME}/.config/openshell/dashboard.env" "${HOME}/.config/openshell/dashboard-proxy.env"
+
+cat > "${HOME}/.config/systemd/user/openshell-dashboard.service" <<UNITEOF
+[Unit]
+Description=OpenShell Dashboard (BFF + UI)
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/${RUNTIME} rm -f openshell-dashboard
+ExecStart=/usr/bin/${RUNTIME} run --rm --name openshell-dashboard --network host --env-file=%h/.config/openshell/dashboard.env -v %h/.config/openshell/dashboard-gateway-ca.crt:/tls/ca.crt:ro,Z ${DASHBOARD_IMAGE}
+ExecStop=/usr/bin/${RUNTIME} stop -t 5 openshell-dashboard
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
+UNITEOF
+
+cat > "${HOME}/.config/systemd/user/openshell-dashboard-proxy.service" <<UNITEOF
+[Unit]
+Description=OpenShell Dashboard Auth Proxy (oauth2-proxy)
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/${RUNTIME} rm -f openshell-dashboard-proxy
+ExecStart=/usr/bin/${RUNTIME} run --rm --name openshell-dashboard-proxy --network host --env-file=%h/.config/openshell/dashboard-proxy.env -v %h/.config/openshell/dashboard-users:/etc/saw/dashboard-users:ro,Z ${CA_MOUNT} ${DASHBOARD_PROXY_IMAGE}
+ExecStop=/usr/bin/${RUNTIME} stop -t 5 openshell-dashboard-proxy
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
+UNITEOF
+
+systemctl --user daemon-reload
+# `enable --now` is a no-op on an already-running unit, so it silently keeps
+# a stale container alive (with a stale env-file, e.g. an old OIDC issuer)
+# across re-runs of this script — confirmed live: after fixing oidc.issuerUrl
+# and re-running setup, the on-disk dashboard-proxy.env had the corrected
+# issuer but the *running* oauth2-proxy container was untouched and kept
+# redirecting logins to the old issuer until explicitly restarted. Always
+# restart explicitly so config changes take effect on every run, not just
+# the first.
+systemctl --user enable openshell-dashboard.service openshell-dashboard-proxy.service
+systemctl --user restart openshell-dashboard.service openshell-dashboard-proxy.service
+
+echo "Waiting for dashboard to become ready..."
+ok=0
+for i in $(seq 1 15); do
+  sleep 2
+  if curl -sf --max-time 2 http://127.0.0.1:8090/api/v1/healthz >/dev/null 2>&1; then
+    ok=1
+    break
+  fi
+  echo "  waiting for dashboard... (attempt $i)"
+done
+if [[ "${ok}" -ne 1 ]]; then
+  echo "Error: dashboard health check timed out." >&2
+  if ! journalctl --user -u openshell-dashboard.service -n 30 --no-pager >&2; then
+    echo "Warning: could not read dashboard logs." >&2
+  fi
+  if ! journalctl --user -u openshell-dashboard-proxy.service -n 30 --no-pager >&2; then
+    echo "Warning: could not read proxy logs." >&2
+  fi
+  echo "Inspect the dashboard and proxy service status in the VM." >&2
+  exit 1
+else
+  echo "dashboard ready"
+fi
+
+echo "setup-dashboard OK"

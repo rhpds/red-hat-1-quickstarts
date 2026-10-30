@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id: slack
+display_name: Slack
+description: Read-only Slack Web API access for governed sandbox agents
+category: messaging
+credentials:
+  - name: api_token
+    description: Slack bot or user token
+    env_vars: [SLACK_BOT_TOKEN, SLACK_TOKEN]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+    # Rotating-token contract for compatible consumers. SAW currently uses
+    # a static bot token: Slack rotation would require persisting the new
+    # refresh token back to Vault and is not supported by the SAW broker.
+    refresh:
+      strategy: oauth2_refresh_token
+      token_url: https://slack.com/api/oauth.v2.access
+      refresh_before_seconds: 600
+      max_lifetime_seconds: 43200
+      material:
+        - name: client_id
+          description: Slack app client ID
+          required: true
+        - name: client_secret
+          description: Slack app client secret
+          required: true
+          secret: true
+        - name: refresh_token
+          description: Slack refresh token (xoxe-...)
+          required: true
+          secret: true
+discovery:
+  credentials: [api_token]
+endpoints:
+  - host: slack.com
+    port: 443
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: GET
+          path: /api/auth.test
+      - allow:
+          method: GET
+          path: /api/team.info
+      - allow:
+          method: GET
+          path: /api/users.info
+      - allow:
+          method: GET
+          path: /api/conversations.list
+      - allow:
+          method: GET
+          path: /api/conversations.info
+      - allow:
+          method: GET
+          path: /api/conversations.history
+      - allow:
+          method: GET
+          path: /api/conversations.replies
+binaries:
+  - /usr/bin/curl
+  - /usr/local/bin/curl
+  # node: OpenClaw and its tools (the daily briefing collector). The real
+  # path is matched: /usr/bin/node-<major> in Hummingbird-based images,
+  # /usr/local/bin/node in the NemoClaw image.
+  - /usr/bin/node
+  - /usr/bin/node-*
+  - /usr/local/bin/node

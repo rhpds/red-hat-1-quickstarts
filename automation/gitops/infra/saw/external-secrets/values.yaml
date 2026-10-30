@@ -1,0 +1,107 @@
+---
+# -- Dictionary of all the settings to configure this chart
+# @default -- depends on the individual settings
+ocpExternalSecrets:
+  rbac:
+    # -- The name of the vault role when connecting to the vault from the hub
+    rolename: "hub-role"
+    # -- ServiceAccount configuration for external secrets
+    # @default -- depends on the individual settings
+    serviceAccount:
+      # -- The name of the service account used by external secrets
+      name: "ocp-external-secrets"
+      # -- The namespace where the service account is created
+      namespace: "external-secrets"
+
+  # -- Settings relevant when using the kubernetes backend
+  # @default -- depends on the individual settings
+  kubernetes:
+    # -- The remote namespace used in the ClusterSecretStore
+    remoteNamespace: "validated-patterns-secrets"
+    server:
+      # -- The URL used in the ClusterSecretStore
+      url: "https://kubernetes.default"
+
+  # -- Some vault configuration entries
+  # @default -- depends on the individual settings
+  vault:
+    # -- If non-empty, sets the Vault API URL on the ClusterSecretStore (`spec.provider.vault.server`), for example an
+    # external Vault reachable at an HTTPS URL you provide. When empty, the chart uses the in-cluster hub pattern
+    # `vault-vault` plus `global.hubClusterDomain` (no separate parameter required).
+    externalAddress: ""
+    # -- Settings below apply only when `externalAddress` is non-empty (ignored for framework-managed hub Vault).
+    # @default -- depends on the individual settings
+    external:
+      # -- Arbitrary auth stanza rendered directly into `spec.provider.vault.auth` when `externalAddress` is non-empty.
+      # Use this for non-Kubernetes auth methods (for example AppRole, JWT/OIDC, token, LDAP, cert). When set, this
+      # takes precedence over `kubernetesMountPath`/`kubernetesRole` and `secretRef`.
+      auth: {}
+      # -- KV mount path segment for `spec.provider.vault.path` (e.g. `secret` or a team-specific engine). Empty keeps
+      # the default `secret`.
+      kvPath: ""
+      # -- KV version (`v1` or `v2`). Empty keeps the default `v2`.
+      kvVersion: ""
+      # -- Vault Kubernetes auth mount path for the external Vault. Must be set together with `kubernetesRole`; if
+      # either is empty, hub/spoke auth from this chart is used instead.
+      kubernetesMountPath: ""
+      # -- Vault Kubernetes auth role for the external Vault. Must be set together with `kubernetesMountPath`.
+      kubernetesRole: ""
+      # -- Secret reference used for `spec.provider.vault.auth.kubernetes.secretRef` when `externalAddress` is non-empty.
+      # All fields are required in that case and should point to an existing Secret holding the Kubernetes auth JWT.
+      # Ignored when `external.auth` is provided.
+      # @default -- depends on the individual settings
+      secretRef:
+        # -- Secret name for external Vault Kubernetes auth. Required when `externalAddress` is non-empty.
+        name: ""
+        # -- Namespace of the secret for external Vault Kubernetes auth. Required when `externalAddress` is non-empty.
+        namespace: ""
+        # -- Secret key containing the JWT token for external Vault Kubernetes auth. Required when `externalAddress` is non-empty.
+        key: ""
+    # -- The vault secrets' path when connecting to it from the hub
+    mountPath: "hub"
+
+  # -- This controls how ESO connects to vault and it allows to specify where the public key
+  # of the CA that signed the API endpoint to talke to the vault
+  # @default -- depends on the individual settings
+  caProvider:
+    # -- When set to true this uses a custom CA to talk to vault
+    enabled: true # If vault is exposed via a route that is signed by a non internal CA you might want to disable this
+    # -- Where to fetch the CA that signed the vault API endpoint when on the hub cluster
+    # @default -- depends on the individual settings
+    hostCluster:
+      # -- Type of object where the CA is stored
+      type: ConfigMap
+      # -- Name of object where the CA is stored
+      name: kube-root-ca.crt
+      # -- Key of object where the CA is stored
+      key: ca.crt
+      # -- Namespace of object where the CA is stored
+      namespace: external-secrets
+    # -- Where to fetch the CA that signed the vault API endpoint when on a spoke cluster
+    # @default -- depends on the individual settings
+    clientCluster:
+      # -- Type of object where the CA is stored
+      type: Secret
+      # -- Name of object where the CA is stored
+      name: hub-ca
+      # -- Key of object where the CA is stored
+      key: hub-kube-root-ca.crt
+      # -- Namespace of object where the CA is stored
+      namespace: external-secrets
+
+# -- The global namespace containes some globally used variables used in patterns
+# @default -- depends on the individual settings
+global:
+  # -- The DNS entry for the hub cluster
+  hubClusterDomain: hub.example.com
+  # -- The DNS entry for the cluster the chart is being rendered on
+  clusterDomain: foo.example.com
+
+  secretStore:
+    # -- The backend of ESO being used in the pattern
+    backend: "vault"
+
+clusterGroup:
+  applications: {}
+  # -- The variable that defines when a cluster is the HUB
+  # (Deprecated) isHubCluster: true

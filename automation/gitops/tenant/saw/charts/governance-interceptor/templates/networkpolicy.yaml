@@ -1,0 +1,32 @@
+{{- if .Values.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: governance-interceptor
+  labels:
+    app.kubernetes.io/name: governance-interceptor
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  # The pod serving port {{ .Values.port }}: this chart's interceptor, or APF.
+  podSelector:
+    matchLabels:
+      {{- include "governance.podSelector" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: {{ .Values.port }}
+          protocol: TCP
+      from:
+        # KubeVirt VM pods in this namespace (gateway connects to interceptor)
+        - podSelector:
+            matchLabels:
+              kubevirt.io: virt-launcher
+        # Gateway VMs of SAWs, each in its own labelled namespace
+        - namespaceSelector:
+            matchLabels:
+              {{ .Values.sawNamespaceLabel.key }}: {{ .Values.sawNamespaceLabel.value | quote }}
+          podSelector:
+            matchLabels:
+              kubevirt.io: virt-launcher
+{{- end }}

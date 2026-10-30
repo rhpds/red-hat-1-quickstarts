@@ -1,0 +1,41 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: governance-interceptor
+spec:
+  source:
+    type: Dockerfile
+    dockerfile: |
+{{ .Files.Get "files/Dockerfile" | indent 6 }}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      forcePull: true
+      buildArgs:
+        - name: BUILDER_IMAGE
+          value: {{ .Values.build.builderImage | quote }}
+        - name: RUNTIME_IMAGE
+          value: {{ .Values.build.runtimeImage | quote }}
+        - name: OPENSHELL_URI
+          value: {{ .Values.source.git.uri | quote }}
+        - name: OPENSHELL_REF
+          value: {{ .Values.source.git.ref | quote }}
+        - name: CONTEXT_DIR
+          value: {{ .Values.build.contextDir | quote }}
+  output:
+    {{- if .Values.output.imageStreamTag }}
+    # Into this cluster's internal registry (no external push access needed).
+    to:
+      kind: ImageStreamTag
+      name: {{ .Values.output.imageStreamTag }}
+    {{- else }}
+    to:
+      kind: DockerImage
+      name: {{ .Values.output.externalImage }}
+    pushSecret:
+      name: {{ .Values.output.pushSecretName }}
+    {{- end }}
+  resources:
+    limits:
+      memory: 4Gi
+  triggers: []

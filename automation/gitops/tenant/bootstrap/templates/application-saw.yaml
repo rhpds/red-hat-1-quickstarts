@@ -1,0 +1,66 @@
+{{- $saw := .Values.saw -}}
+{{- if and $saw (or (not (hasKey $saw "enabled")) (eq (lower (toString $saw.enabled)) "true")) }}
+{{- $git := $saw.git | default dict -}}
+{{- $repo := $git.url | default "https://github.com/rhpds/red-hat-1-quickstarts.git" -}}
+{{- $revision := $git.revision | default "main" -}}
+{{- $domain := required "saw.clusterDomain is required (without apps.)" $saw.clusterDomain -}}
+{{- $name := required "saw.userName is required" $saw.userName -}}
+{{- if not (regexMatch "^[a-z]([-a-z0-9]*[a-z0-9])?$" $name) -}}
+{{- fail "saw.userName must begin with a letter and be a lowercase DNS label" -}}
+{{- end -}}
+{{- $proxy := required "saw.credentialProxyImage is required" $saw.credentialProxyImage -}}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $proxy) -}}
+{{- fail "saw.credentialProxyImage must be pinned by digest" -}}
+{{- end -}}
+{{- $source := $saw.vmSource | default dict -}}
+{{- if not (or $source.dataSource (regexMatch "^docker://.+@sha256:[a-f0-9]{64}$" ($source.registryURL | default ""))) -}}
+{{- fail "saw.vmSource must specify an existing dataSource or a digest-pinned docker:// registryURL" -}}
+{{- end -}}
+{{- $defaults := dict
+  "users" (list (dict "name" $name))
+  "ownerResolution" (dict "enabled" true "resolverNamespace" "saw-keycloak")
+  "global" (dict "repoURL" $repo "targetRevision" $revision "vpArgoNamespace" .Values.gitops.namespace "clusterDomain" $domain)
+  "defaults" (dict "openshellSaw" (dict "credentialProxy" (dict "image" $proxy) "source" $source)) -}}
+{{- if $saw.inferenceHost -}}
+{{- if not (regexMatch "^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$" $saw.inferenceHost) -}}
+{{- fail "saw.inferenceHost must be a hostname without a scheme, port, or wildcard" -}}
+{{- end -}}
+{{- $_ := set $defaults.defaults.openshellSaw "egress" (dict "extraAllow" (list $saw.inferenceHost)) -}}
+{{- end -}}
+{{- $values := mustMergeOverwrite $defaults (deepCopy ($saw.values | default dict)) -}}
+{{- $_ := set $values.global "repoURL" $repo -}}
+{{- $_ := set $values.global "targetRevision" $revision -}}
+{{- $_ := set $values.global "vpArgoNamespace" .Values.gitops.namespace -}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ printf "saw-users-%s" .Values.tenant.name | quote }}
+  namespace: {{ .Values.gitops.namespace | quote }}
+spec:
+  project: default
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $revision | quote }}
+    path: automation/gitops/tenant/saw/charts/saw-users
+    helm:
+      releaseName: {{ printf "saw-users-%s" .Values.tenant.name | quote }}
+      values: |
+{{ toYaml $values | indent 8 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshell-agents
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 30
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

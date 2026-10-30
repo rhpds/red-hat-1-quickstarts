@@ -1,0 +1,172 @@
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: {{ .Values.keycloak.name }}-realm
+{{- /* Imported users' passwords: from the Secret (placeholders), or a strong
+     explicit password. Never a guessable default. */ -}}
+{{- if and .Values.keycloak.registrationAllowed (not .Values.demo.enabled) }}
+{{- fail "keycloak.registrationAllowed requires demo.enabled=true" }}
+{{- end }}
+{{- $users := .Values.keycloak.users | default list }}
+{{- if .Values.demo.enabled }}
+{{- $users = concat $users (.Values.demo.users | default list) }}
+{{- end }}
+{{- $seen := dict }}
+{{- $placeholders := dict }}
+{{- range $i, $u := $users }}
+{{- if or (not $u.username) (hasKey $seen $u.username) }}
+{{- fail (printf "imported user %q has an empty or duplicate username" $u.username) }}
+{{- end }}
+{{- $_ := set $seen $u.username true }}
+{{- if $u.password }}
+{{- $pw := toString $u.password }}
+{{- if or (lt (len $pw) 14) (not (regexMatch "[a-z]" $pw)) (not (regexMatch "[A-Z]" $pw)) (not (regexMatch "[0-9]" $pw)) (not (regexMatch "[^A-Za-z0-9]" $pw)) (contains (lower $u.username) (lower $pw)) }}
+{{- fail (printf "imported user %s: password is too weak (14+ characters with upper, lower, digit and special, not the user name); leave it out to use the generated one from Secret %s" $u.username $.Values.keycloak.userPasswords.secretName) }}
+{{- end }}
+{{- else }}
+{{- if not $.Values.keycloak.userPasswords.secretName }}
+{{- fail (printf "imported user %s: no password; set keycloak.userPasswords.secretName" $u.username) }}
+{{- end }}
+{{- $_ := set $placeholders (printf "SAW_USER_PASSWORD_%d" $i) (dict "secret" (dict "name" $.Values.keycloak.userPasswords.secretName "key" $u.username)) }}
+{{- end }}
+{{- end }}
+spec:
+  keycloakCRName: {{ .Values.keycloak.existing | default .Values.keycloak.name }}
+  {{- with $placeholders }}
+  placeholders:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  realm:
+    id: {{ .Values.keycloak.realm }}
+    realm: {{ .Values.keycloak.realm }}
+    displayName: OpenShell
+    enabled: true
+    registrationAllowed: {{ and .Values.demo.enabled .Values.keycloak.registrationAllowed }}
+    loginWithEmailAllowed: true
+    duplicateEmailsAllowed: false
+    sslRequired: external
+    {{- with .Values.keycloak.passwordPolicy }}
+    passwordPolicy: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.keycloak.bruteForce }}
+    bruteForceProtected: {{ .enabled | default false }}
+    permanentLockout: false
+    failureFactor: {{ .failureFactor | default 5 }}
+    waitIncrementSeconds: {{ .waitIncrementSeconds | default 60 }}
+    maxFailureWaitSeconds: {{ .maxFailureWaitSeconds | default 900 }}
+    maxDeltaTimeSeconds: {{ .maxDeltaTimeSeconds | default 43200 }}
+    {{- end }}
+    roles:
+      {{- if .Values.keycloak.roles }}
+      realm:
+        {{- range .Values.keycloak.roles }}
+        - name: {{ . | quote }}
+          composite: false
+          clientRole: false
+        {{- end }}
+      {{- else }}
+      realm: []
+      {{- end }}
+    clients:
+      - clientId: {{ .Values.keycloak.clients.cli.clientId | quote }}
+        name: OpenShell CLI
+        enabled: true
+        publicClient: {{ .Values.keycloak.clients.cli.public }}
+        standardFlowEnabled: true
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: false
+        attributes:
+          pkce.code.challenge.method: S256
+          access.token.lifespan: {{ .Values.keycloak.clients.cli.accessTokenLifespan | quote }}
+          oauth2.device.authorization.grant.enabled: "true"
+          oauth2.device.polling.interval: "5"
+        redirectUris:
+          - "http://localhost:*"
+          - "http://127.0.0.1:*"
+          - "urn:ietf:wg:oauth:2.0:oob"
+        webOrigins:
+          - "http://localhost"
+          - "http://127.0.0.1"
+        protocolMappers:
+          - name: realm-roles
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-realm-role-mapper
+            config:
+              multivalued: "true"
+              claim.name: realm_access.roles
+              jsonType.label: String
+              id.token.claim: "true"
+              access.token.claim: "true"
+              userinfo.token.claim: "true"
+          - name: audience
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            config:
+              included.client.audience: {{ .Values.keycloak.clients.cli.clientId | quote }}
+              id.token.claim: "true"
+              access.token.claim: "true"
+      - clientId: {{ .Values.keycloak.clients.dashboard.clientId | quote }}
+        name: OpenShell Dashboard
+        enabled: true
+        publicClient: {{ .Values.keycloak.clients.dashboard.public }}
+        standardFlowEnabled: true
+        directAccessGrantsEnabled: false
+        serviceAccountsEnabled: false
+        attributes:
+          pkce.code.challenge.method: S256
+        # toJson: an empty list must render as [] (the CRD rejects null, and
+        # server-side apply enforces it). Each SAW's prepare Job adds its own.
+        redirectUris: {{ .Values.keycloak.clients.dashboard.redirectUris | default list | toJson }}
+        webOrigins: {{ .Values.keycloak.clients.dashboard.webOrigins | default list | toJson }}
+        protocolMappers:
+          - name: realm-roles
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-realm-role-mapper
+            config:
+              multivalued: "true"
+              claim.name: realm_access.roles
+              jsonType.label: String
+              id.token.claim: "true"
+              access.token.claim: "true"
+              userinfo.token.claim: "true"
+          - name: audience
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            config:
+              included.client.audience: {{ .Values.keycloak.clients.dashboard.clientId | quote }}
+              id.token.claim: "true"
+              access.token.claim: "true"
+          # The gateway validates the access token's audience against its
+          # single configured `oidc.audience` (= the CLI client ID) — confirmed
+          # live: the dashboard's own tokens were rejected with
+          # "Unauthenticated: invalid token: InvalidAudience" on every gRPC
+          # call. Add the CLI's client ID as a second audience entry so
+          # dashboard-issued tokens satisfy the gateway's existing check too,
+          # without changing the gateway's config at all.
+          - name: cli-audience
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            config:
+              included.client.audience: {{ .Values.keycloak.clients.cli.clientId | quote }}
+              id.token.claim: "false"
+              access.token.claim: "true"
+    {{- if $users }}
+    users:
+      {{- range $i, $u := $users }}
+      {{- with $u }}
+      - username: {{ .username | quote }}
+        firstName: {{ .firstName | default (.username | title) | quote }}
+        lastName: {{ .lastName | default "User" | quote }}
+        enabled: true
+        emailVerified: true
+        email: {{ printf "%s@openshell.local" .username | quote }}
+        credentials:
+          - type: password
+            value: {{ if .password }}{{ .password | quote }}{{ else }}{{ printf "${SAW_USER_PASSWORD_%d}" $i | quote }}{{ end }}
+            temporary: false
+        realmRoles: {{ .roles | default list | toJson }}
+      {{- end }}
+      {{- end }}
+    {{- else }}
+    users: []
+    {{- end }}

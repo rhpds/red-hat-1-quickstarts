@@ -1,0 +1,199 @@
+---
+- name: Validate SAW preparation inputs
+  ansible.builtin.assert:
+    that:
+      - saw_prepare_mirror_source is match('^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}$')
+      - saw_prepare_mirror_repository is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+      - saw_prepare_vault_ssh_path is match('^hub(/[a-zA-Z0-9][a-zA-Z0-9_-]*)*/ssh$')
+      - saw_prepare_python_image is match('^.+@sha256:[a-f0-9]{64}$')
+      - saw_prepare_mirror_tool_image is match('^.+@sha256:[a-f0-9]{64}$')
+    fail_msg: SAW preparation needs digest-pinned images and a valid Vault SSH path.
+
+- name: Derive stable image identity and unique job names
+  ansible.builtin.set_fact:
+    _saw_digest: "{{ saw_prepare_mirror_source | regex_search('sha256:[a-f0-9]{64}$') }}"
+    _saw_tag: "digest-{{ (saw_prepare_mirror_source | regex_search('[a-f0-9]{64}$'))[:16] }}"
+    _saw_run_id: "{{ lookup('ansible.builtin.password', '/dev/null length=8 chars=ascii_lowercase,digits') }}"
+
+- name: Derive the registry target
+  ansible.builtin.set_fact:
+    _saw_ssh_job: "saw-ssh-seed-{{ _saw_run_id }}"
+    _saw_mirror_job: "saw-golden-mirror-{{ _saw_run_id }}"
+    _saw_registry_destination: "image-registry.openshift-image-registry.svc:5000/{{ saw_prepare_namespace }}/{{ saw_prepare_mirror_repository }}:{{ _saw_tag }}"
+
+- name: Wait for the infrastructure namespaces
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ item }}"
+  register: _saw_namespace
+  retries: "{{ saw_prepare_retries }}"
+  delay: "{{ saw_prepare_delay }}"
+  until: _saw_namespace.resources | length > 0
+  loop:
+    - "{{ saw_prepare_vault_namespace }}"
+    - "{{ saw_prepare_namespace }}"
+
+- name: Provision supplied Vault writer token when configured
+  when: saw_vault_writer_token | default('') | length > 0
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ saw_prepare_vault_token_secret }}"
+        namespace: "{{ saw_prepare_vault_namespace }}"
+      type: Opaque
+      stringData:
+        "{{ saw_prepare_vault_token_key }}": "{{ saw_vault_writer_token }}"
+
+- name: Require the preconfigured Vault writer token
+  no_log: true
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ saw_prepare_vault_token_secret }}"
+    namespace: "{{ saw_prepare_vault_namespace }}"
+  register: _saw_writer_secret
+
+- name: Check that the Vault writer token exists
+  no_log: true
+  ansible.builtin.set_fact:
+    _saw_writer_valid: >-
+      {{ (_saw_writer_secret.resources | length == 1) and
+         (saw_prepare_vault_token_key in (_saw_writer_secret.resources[0].data | default({})) if _saw_writer_secret.resources | length == 1 else false) }}
+
+- name: Report a missing Vault writer token
+  ansible.builtin.assert:
+    that:
+      - _saw_writer_valid | bool
+    fail_msg: Create the Vault writer Secret or provide saw_vault_writer_token through agnosticv secrets.
+
+- name: Request the OpenShift service CA for Vault
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: saw-vault-service-ca
+        namespace: "{{ saw_prepare_vault_namespace }}"
+        annotations:
+          service.beta.openshift.io/inject-cabundle: "true"
+
+- name: Create image mirror service account and permissions
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop:
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata: {name: saw-image-mirror, namespace: "{{ saw_prepare_namespace }}"}
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata: {name: saw-image-mirror-builder, namespace: "{{ saw_prepare_namespace }}"}
+      roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: "system:image-builder"}
+      subjects:
+        - {kind: ServiceAccount, name: saw-image-mirror, namespace: "{{ saw_prepare_namespace }}"}
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata: {name: saw-image-mirror-nonroot-v2, namespace: "{{ saw_prepare_namespace }}"}
+      roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: "system:openshift:scc:nonroot-v2"}
+      subjects:
+        - {kind: ServiceAccount, name: saw-image-mirror, namespace: "{{ saw_prepare_namespace }}"}
+    - apiVersion: image.openshift.io/v1
+      kind: ImageStream
+      metadata: {name: "{{ saw_prepare_mirror_repository }}", namespace: "{{ saw_prepare_namespace }}"}
+
+- name: Check the mirrored image tag
+  kubernetes.core.k8s_info:
+    api_version: image.openshift.io/v1
+    kind: ImageStreamTag
+    name: "{{ saw_prepare_mirror_repository }}:{{ _saw_tag }}"
+    namespace: "{{ saw_prepare_namespace }}"
+  register: _saw_image_tag
+
+- name: Start the SSH provisioning job
+  kubernetes.core.k8s:
+    state: present
+    template: ssh-job.yaml.j2
+
+- name: Start the image mirror job if the digest is not already present
+  kubernetes.core.k8s:
+    state: present
+    template: mirror-job.yaml.j2
+  when: _saw_image_tag.resources | length == 0 or _saw_image_tag.resources[0].image.metadata.name | default('') != _saw_digest
+  register: _saw_mirror_start
+
+- name: Wait for the SSH provisioning job
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ saw_prepare_vault_namespace }}"
+    name: "{{ _saw_ssh_job }}"
+  register: _saw_ssh_result
+  retries: "{{ saw_prepare_retries }}"
+  delay: "{{ saw_prepare_delay }}"
+  until: >-
+    _saw_ssh_result.resources | length > 0 and
+    ((_saw_ssh_result.resources[0].status.succeeded | default(0) | int > 0) or
+     (_saw_ssh_result.resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Failed') | selectattr('status', 'equalto', 'True') | list | length > 0))
+
+- name: Fail when SSH provisioning did not complete
+  ansible.builtin.assert:
+    that: _saw_ssh_result.resources[0].status.succeeded | default(0) | int > 0
+    fail_msg: SSH provisioning failed; check the Job, Vault unseal status and writer permissions.
+
+- name: Wait for the image mirror job
+  when: _saw_mirror_start is not skipped
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ saw_prepare_namespace }}"
+    name: "{{ _saw_mirror_job }}"
+  register: _saw_mirror_result
+  retries: "{{ saw_prepare_retries }}"
+  delay: "{{ saw_prepare_delay }}"
+  until: >-
+    _saw_mirror_result.resources | length > 0 and
+    ((_saw_mirror_result.resources[0].status.succeeded | default(0) | int > 0) or
+     (_saw_mirror_result.resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Failed') | selectattr('status', 'equalto', 'True') | list | length > 0))
+
+- name: Fail when image mirroring did not complete
+  when: _saw_mirror_start is not skipped
+  ansible.builtin.assert:
+    that: _saw_mirror_result.resources[0].status.succeeded | default(0) | int > 0
+    fail_msg: Image mirroring failed; inspect the mirror Job and registry access.
+
+- name: Verify the destination retained the source digest
+  kubernetes.core.k8s_info:
+    api_version: image.openshift.io/v1
+    kind: ImageStreamTag
+    name: "{{ saw_prepare_mirror_repository }}:{{ _saw_tag }}"
+    namespace: "{{ saw_prepare_namespace }}"
+  register: _saw_verified_image
+  retries: 12
+  delay: 5
+  until: >-
+    _saw_verified_image.resources | length > 0 and
+    _saw_verified_image.resources[0].image.metadata.name | default('') == _saw_digest
+
+- name: Report the pinned golden image
+  ansible.builtin.debug:
+    msg: "SAW golden image ready: docker://image-registry.openshift-image-registry.svc:5000/{{ saw_prepare_namespace }}/{{ saw_prepare_mirror_repository }}@{{ _saw_digest }}"
+
+- name: Wait for the infrastructure bootstrap to become ready
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: "{{ ocp4_workload_gitops_bootstrap_namespace | default('openshift-gitops') }}"
+    name: "{{ ocp4_workload_gitops_bootstrap_application_name | default('lb2142-ai-quickstarts') }}"
+  register: _saw_bootstrap
+  retries: "{{ saw_prepare_retries }}"
+  delay: "{{ saw_prepare_delay }}"
+  until: >-
+    _saw_bootstrap.resources | length > 0 and
+    (_saw_bootstrap.resources[0].status.health.status | default('') == 'Healthy') and
+    (_saw_bootstrap.resources[0].status.sync.status | default('') == 'Synced')

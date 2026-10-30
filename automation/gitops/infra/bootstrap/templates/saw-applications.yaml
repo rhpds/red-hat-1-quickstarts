@@ -1,0 +1,51 @@
+{{- if eq (lower (toString .Values.saw.enabled)) "true" }}
+{{- $saw := .Values.saw -}}
+{{- $domain := required "saw.clusterDomain is required (without the apps. prefix)" $saw.clusterDomain -}}
+{{- $password := required "saw.keycloak.postgresPassword is required" $saw.keycloak.postgresPassword -}}
+{{- $vaultDefaults := dict "global" (dict "localClusterDomain" (printf "apps.%s" $domain)) "vault" (dict "server" (dict "image" (dict "tag" "2.1.2-ubi@sha256:b46738fbe5494e4141e94a0641e4e676e090af788b7729d8b3af2b62cadf5aef"))) -}}
+{{- $esoDefaults := dict "global" (dict "clusterDomain" $domain "hubClusterDomain" (printf "apps.%s" $domain)) "clusterGroup" (dict "applications" (dict "vault" (dict "chart" "hashicorp-vault"))) -}}
+{{- $keycloakDefaults := dict "postgres" (dict "password" $password) "keycloak" (dict "userPasswords" (dict "externalSecret" (dict "enabled" true))) "ownerResolver" (dict "enabled" true) -}}
+{{- $apps := list
+  (dict "name" "saw-vault" "release" "vault" "namespace" "vault" "path" "automation/gitops/infra/saw/vault" "wave" "0" "values" (mustMergeOverwrite $vaultDefaults (deepCopy $saw.vault.values)))
+  (dict "name" "saw-external-secrets" "namespace" "external-secrets" "path" "automation/gitops/infra/saw/external-secrets" "wave" "0" "values" (mustMergeOverwrite $esoDefaults (deepCopy $saw.externalSecrets.values)))
+  (dict "name" "saw-virtualization" "namespace" "openshift-cnv" "path" "automation/gitops/tenant/saw/charts/openshift-cnv" "wave" "0" "values" dict)
+  (dict "name" "saw-keycloak" "namespace" "saw-keycloak" "path" "automation/gitops/tenant/saw/charts/openshell-keycloak" "wave" "0" "values" (mustMergeOverwrite $keycloakDefaults (deepCopy $saw.keycloak.values)))
+  (dict "name" "saw-governance-policy" "namespace" "openshell-agents" "path" "automation/gitops/tenant/saw/charts/governance-policy" "wave" "0" "values" dict)
+  (dict "name" "saw-governance-interceptor" "namespace" "openshell-agents" "path" "automation/gitops/tenant/saw/charts/governance-interceptor" "wave" "0" "values" $saw.governance.values) -}}
+{{- range $app := $apps }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ $saw.gitopsNamespace | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $app.wave | quote }}
+spec:
+  project: default
+  source:
+    repoURL: {{ $saw.git.url | quote }}
+    targetRevision: {{ $saw.git.revision | quote }}
+    path: {{ $app.path }}
+    helm:
+      releaseName: {{ $app.release | default $app.name }}
+      values: |
+{{ toYaml $app.values | indent 8 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $app.namespace }}
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 30
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}
+{{- end }}

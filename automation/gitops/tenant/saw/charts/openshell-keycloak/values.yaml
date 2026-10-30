@@ -1,0 +1,152 @@
+postgres:
+  image: "registry.redhat.io/rhel9/postgresql-16:latest@sha256:9223bb5f0745e66f0e4204ff87d4d1a5283f3726e9b7d9b71d7bdb2a650fc218"
+  storage: 1Gi
+  database: keycloak
+  username: keycloak
+  password: keycloak-db-pass
+
+keycloak:
+  name: openshell-keycloak
+  instances: 1
+  # Name of a Keycloak CR already running in this namespace. When set, the
+  # chart only imports the OpenShell realm into that server (no Keycloak or
+  # PostgreSQL of its own); other realms on it are not touched.
+  # `make keycloak-deploy` sets it when you choose to use an existing Keycloak.
+  existing: ""
+
+  hostname: ""
+
+  realm: openshell
+  # An admin adds production users with keycloak-add-users. Demo mode may
+  # enable registration explicitly, but never enables it by itself.
+  registrationAllowed: false
+
+  clients:
+    cli:
+      clientId: openshell-cli
+      public: true
+      # Access token lifetime in seconds. Set high for long-running sandboxes.
+      # 86400 = 24 hours. Sandboxes run for days, so short-lived tokens cause
+      # ssh-proxy and dashboard failures. The realm raises no SSO Session Max,
+      # so Keycloak's 10-hour default still caps the effective token lifetime.
+      accessTokenLifespan: 86400
+    dashboard:
+      clientId: openshell-dashboard
+      public: true
+      # Each sandbox VM gets its own oauth2-proxy instance behind a unique
+      # per-VM Route hostname (<sandbox>-webui-<ns>.apps.<clusterDomain>).
+      # Keycloak's redirect URI matching only supports a *trailing* wildcard —
+      # confirmed live that "https://*/oauth2/callback" is rejected outright
+      # ("Invalid parameter: redirect_uri") — so a single static entry can't
+      # cover every sandbox. Each web UI route's exact redirect URI is
+      # registered on this client: by the redirect registrar below (on by
+      # default), or by an administrator (make keycloak-register KC_USER=...,
+      # make keycloak-redirects-sync).
+      # These are just the initial (empty) values before any sandbox exists.
+      redirectUris: []
+      webOrigins: []
+
+  # Realm password rules: for passwords users set (registration, reset,
+  # the account console). Keycloak format, see "Password policies" in its
+  # server admin guide.
+  passwordPolicy: >-
+    length(14) and upperCase(1) and lowerCase(1) and digits(1) and
+    specialChars(1) and notUsername(undefined) and notEmail(undefined) and
+    passwordHistory(5)
+  # Lock an account out after failed sign-ins (temporary, growing waits).
+  bruteForce:
+    enabled: true
+    failureFactor: 5
+    waitIncrementSeconds: 60
+    maxFailureWaitSeconds: 900
+    maxDeltaTimeSeconds: 43200
+
+  # Imported users' passwords are never in values: they come from the Secret
+  # userPasswords.secretName in this namespace, key = username, and the realm
+  # import reads them as placeholders. Make them with
+  # scripts/keycloak-users.sh ensure (make keycloak-deploy does), or, in
+  # the Validated Pattern, from Vault (externalSecret, values-secret
+  # keycloak-users, generated). A user may set `password` instead; it must
+  # pass the same rules as passwordPolicy (14+ characters, upper, lower,
+  # digit, special, not the user name).
+  userPasswords:
+    secretName: openshell-keycloak-user-passwords
+    externalSecret:
+      enabled: false
+      vaultKey: secret/data/hub/keycloak-users
+      secretStoreRef:
+        name: vault-backend
+        kind: ClusterSecretStore
+
+  # Operator-supplied accounts to import into a new realm. Existing realms
+  # require keycloak-add-users; a realm import is not an update mechanism.
+  users: []
+
+  roles:
+    - openshell-user
+    - openshell-admin
+
+# Explicit demo identities. Production and ordinary quickstart leave these
+# out. Workspace owners have only openshell-user; admin is the demo operator.
+demo:
+  enabled: false
+  users:
+    - username: developer
+      firstName: Developer
+      lastName: User
+      roles:
+        - openshell-user
+    - username: admin
+      firstName: Admin
+      lastName: User
+      roles:
+        - openshell-user
+        - openshell-admin
+    - username: alice
+      firstName: Alice
+      lastName: User
+      roles:
+        - openshell-user
+    - username: bob
+      firstName: Bob
+      lastName: User
+      roles:
+        - openshell-user
+
+# The redirect registrar: registers the SAW web UIs' redirect URIs from
+# inside the cluster. On by default: one Deployment in this namespace keeps
+# the dashboard client's redirect URIs and web origins in step with the SAW
+# web UI routes (routes labelled routeSelector in namespaces labelled
+# namespaceSelector, with a host under hostSuffix), every intervalSeconds.
+# Off: nothing in the cluster holds Keycloak admin access for this, and an
+# administrator registers them instead (make keycloak-register,
+# make keycloak-redirects-sync; README "Web UI sign-in"). Its init container uses the master admin
+# (adminSecret) once per start to set up the registrar's own client, which
+# may only manage this realm's clients; the registrar itself never sees the
+# master admin. Same rules as scripts/keycloak-redirects.py sync.
+redirectRegistrar:
+  enabled: true
+  image: registry.access.redhat.com/ubi9/python-311:latest@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c
+  clientId: saw-redirect-registrar
+  # Empty: http://<keycloak>-service.<namespace>.svc:8080 (in-cluster).
+  keycloakUrl: ""
+  # Empty: <keycloak>-initial-admin (the operator's).
+  adminSecret: ""
+  namespaceSelector: openshell.pattern/saw=true
+  routeSelector: saw.redhat.com/oidc-redirect=true
+  # Empty: the cluster's ingress domain (ingresses.config.openshift.io).
+  hostSuffix: ""
+  intervalSeconds: 15
+
+# Resolve Pattern user-list owners without placing Keycloak admin credentials
+# in tenant namespaces. The user-list chart grants this service account patch
+# access only to each tenant's saw-owner-subject ConfigMap.
+ownerResolver:
+  enabled: false
+  name: saw-owner-resolver
+  image: registry.access.redhat.com/ubi9/python-311:latest@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c
+  clientId: saw-owner-resolver
+  keycloakUrl: ""
+  adminSecret: ""
+  namespaceSelector: openshell.pattern/saw=true
+  intervalSeconds: 30

@@ -1,0 +1,71 @@
+apiVersion: saw.redhat.com/v1alpha1
+kind: Sandboxes
+metadata: {}
+spec:
+  sandboxes:
+    - name: notebook
+      type: openclaw
+      enabled: true
+      # The AIPCC OpenClaw image, used as is (no image of our own): 2026.9.6,
+      # its multi-arch index (each VM pulls its own architecture).
+      image: quay.io/aipcc/base-images/agentic/openclaw@sha256:896d1526ee29b53167034ba65d1c758c8da777f441ed094e19f3bcf6d7445c61
+      providers:
+        - nvidia
+        # Enable the matching provider in providers.yaml before uncommenting:
+        # - openai
+        # - anthropic
+      # The harness bundle is mounted read-only at /sandbox/harness, as is,
+      # from a volume the installer fills; an update refills it in place:
+      #   harnessRef: {name: <bundle>}   inline, from charts/saw-bom/harness/
+      #                                  (digest: optional, checked when set)
+      #   harnessRef: {image: ghcr.io/<owner>/saw-harness-<bundle>@sha256:<digest>}
+      #                                  published by CI from harness-bundles/
+      harnessRef:
+        name: ds-default
+      # Providers hold credentials; inference sets this sandbox's default model.
+      # How the agent reaches its model: the `nvidia` provider's credential
+      # over the OpenAI protocol (NVIDIA's API is OpenAI-compatible), with
+      # the model from the `inference` Secret, else this default (the RHDH
+      # form pre-fills it; each sandbox has its own field).
+      inference:
+        providerRef: nvidia
+        model:
+          secretKeyRef:
+            name: inference
+            key: model
+          default: nvidia/nemotron-3.5-lightning-30b-a3b
+          title: Model (notebook)
+        # Additional chat choices; read only when the provider is enabled and attached.
+        models:
+          openai:
+            secretKeyRef:
+              name: inference-openai
+              key: model
+            default: gpt-6-luna
+            title: OpenAI model (notebook)
+          anthropic:
+            secretKeyRef:
+              name: inference-anthropic
+              key: model
+            default: claude-sonnet-4-6
+            title: Anthropic model (notebook)
+      # ui.route: publish the agent's web UI (OpenClaw control UI, port
+      # 18789) on its own route, <user>-<workspace>-<sandbox>-ui, behind an
+      # oauth2-proxy that signs in with Keycloak and admits only the
+      # workspace owner. The agent gateway then listens on 0.0.0.0 in the
+      # sandbox. Changing which sandboxes have a route restarts the VM.
+      ui:
+        route: true
+    - name: cuda-sandbox
+      type: nemoclaw
+      enabled: false
+      agent: openclaw
+      image: ghcr.io/validatedpatterns-sandbox/nemoclaw-sandbox:latest@sha256:28457eec59e71eca310cd72fc4b57c71506c3fce4c30f2636a237dca85725dbd
+      providers:
+        - nvidia
+    - name: toolbox
+      type: generic
+      enabled: false
+      image: base
+      providers:
+        - nvidia

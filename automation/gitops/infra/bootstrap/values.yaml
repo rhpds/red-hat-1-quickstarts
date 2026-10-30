@@ -1,0 +1,35 @@
+# SAW is opt-in so existing clusters do not receive new operators implicitly.
+saw:
+  enabled: false
+  git:
+    url: https://github.com/rhpds/red-hat-1-quickstarts.git
+    revision: main
+  gitopsNamespace: openshift-gitops
+  clusterDomain: ""
+  keycloak:
+    postgresPassword: ""
+    values: {}
+  vault:
+    values: {}
+  externalSecrets:
+    values: {}
+  inferenceSeed:
+    enabled: false
+    sourceSecret: saw-inference
+    # Prefer a pre-created Kubernetes Secret. If set, these values are rendered
+    # into a Secret and are also visible in the Argo CD Application spec.
+    secretData: {}
+    vaultTokenSecret: saw-vault-writer
+    vaultTokenKey: token
+    vaultPath: hub/inference
+  governance:
+    values: {}
+    customInference:
+      host: ""
+      port: 443
+  operators:
+    source: redhat-operators
+    sourceNamespace: openshift-marketplace
+    externalSecretsChannel: stable-v1
+    virtualizationChannel: stable
+    keycloakChannel: stable-v26

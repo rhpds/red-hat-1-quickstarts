@@ -1,0 +1,88 @@
+# Tool actions. Every unlisted tool is denied and every call is audited.
+version: 1
+defaultAction: deny
+rules:
+  - id: exec-consequential
+    tool: exec
+    action: approval
+    whenCommandMatches:
+      - git push
+      - gh pr merge
+      - rm
+      - kubectl delete
+      - oc delete
+  - id: exec-git-status
+    tool: exec
+    action: allow
+    whenCommandMatches:
+      - git status
+  - id: exec-git-diff
+    tool: exec
+    action: allow
+    whenCommandMatches:
+      - git diff
+  - id: exec-git-log
+    tool: exec
+    action: allow
+    whenCommandMatches:
+      - git log
+  - id: exec-git-show
+    tool: exec
+    action: allow
+    whenCommandMatches:
+      - git show
+  - id: exec-briefing-cron-list
+    tool: exec
+    action: allow
+    whenCommandMatches:
+      - openclaw cron list
+  - id: exec-briefing-cron-change
+    tool: exec
+    action: approval
+    whenCommandMatches:
+      - openclaw cron add
+      - openclaw cron rm
+  # OpenClaw 2026.9.2 runs the hook again for each dispatched target.
+  # These discovery rules never replace the target's own named rule.
+  - id: tool-search
+    tool: tool_search
+    action: allow
+  - id: tool-call
+    tool: tool_call
+    action: allow
+  - id: slack-new-messages
+    tool: slack-reader__new_messages
+    action: allow
+  - id: slack-channels
+    tool: slack-reader__channels
+    action: allow
+  - id: gmail-new-messages
+    tool: gmail-reader__new_messages
+    action: allow
+  - id: briefing-save
+    tool: briefing-writer__save_briefing
+    action: allow
+  - id: read
+    tool: read
+    action: allow
+  - id: memory-search
+    tool: memory_search
+    action: allow
+  - id: memory-get
+    tool: memory_get
+    action: allow
+  - id: session-status
+    tool: session_status
+    action: allow
+  - id: sessions-list
+    tool: sessions_list
+    action: allow
+  - id: sessions-history
+    tool: sessions_history
+    action: allow
+  - id: message-send
+    tool: message
+    action: approval
+  - id: saw-denied-tool
+    tool: saw-denied-tool
+    action: deny
