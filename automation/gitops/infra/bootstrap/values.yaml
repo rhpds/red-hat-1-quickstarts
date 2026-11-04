@@ -1,3 +1,25 @@
+# The bootstrap Application also owns the operational tuning for the OpenShift
+# GitOps instance it relies on. The repo-server fetches this repository over the
+# cluster egress path; keep its Git command timeout and the application
+# controller RPC timeout aligned.
+gitops:
+  argocd:
+    name: openshift-gitops
+    repo:
+      execTimeout: 300
+    controller:
+      repoServerTimeoutSeconds: 300
+      resources:
+        requests:
+          cpu: 500m
+          memory: 2Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+      processors:
+        operation: 3
+        status: 5
+
 # SAW is opt-in so existing clusters do not receive new operators implicitly.
 saw:
   enabled: false
