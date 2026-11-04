@@ -1,0 +1,21 @@
+{{- $argocd := .Values.gitops.argocd -}}
+apiVersion: argoproj.io/v1beta1
+kind: ArgoCD
+metadata:
+  name: {{ $argocd.name | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  repo:
+    # This is the maximum duration for a repo-server Git command. It must be
+    # at least as long as the controller's repo-server RPC timeout below.
+    execTimeout: {{ $argocd.repo.execTimeout }}
+  controller:
+    # The controller flag is read only from this component-specific environment
+    # variable; ARGOCD_REPO_SERVER_TIMEOUT_SECONDS does not affect it.
+    env:
+      - name: ARGOCD_APPLICATION_CONTROLLER_REPO_SERVER_TIMEOUT_SECONDS
+        value: {{ $argocd.controller.repoServerTimeoutSeconds | quote }}
+    resources:
+{{ toYaml $argocd.controller.resources | indent 6 }}
+    processors:
+{{ toYaml $argocd.controller.processors | indent 6 }}
