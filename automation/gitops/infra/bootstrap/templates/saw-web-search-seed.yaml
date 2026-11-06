@@ -1,0 +1,75 @@
+{{- if and (eq (lower (toString .Values.saw.enabled)) "true") (eq (lower (toString .Values.saw.webSearchSeed.enabled)) "true") }}
+{{- $seed := .Values.saw.webSearchSeed }}
+{{- if not (regexMatch "^hub(/[a-zA-Z0-9][a-zA-Z0-9_-]*)*/web-search$" $seed.vaultPath) }}
+{{- fail "saw.webSearchSeed.vaultPath must be a hub/.../web-search path" }}
+{{- end }}
+{{- if not $seed.secretData.api_key }}
+{{- fail "saw.webSearchSeed.secretData.api_key must be set" }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $seed.sourceSecret | quote }}
+  namespace: vault
+type: Opaque
+stringData:
+{{ toYaml $seed.secretData | indent 2 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: saw-web-search-seed
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: registry.access.redhat.com/ubi9/python-311@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6f
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: VAULT_PATH
+              value: {{ $seed.vaultPath | quote }}
+          command: [python, -c]
+          args:
+            - |
+              import json, os, pathlib, ssl, urllib.request
+              source = pathlib.Path('/input')
+              token = pathlib.Path('/vault-token/token').read_text().strip()
+              data = {name: (source / name).read_text().rstrip('\r\n') for name in ('api_key', 'provider') if (source / name).is_file()}
+              if not data.get('api_key'):
+                  raise SystemExit('Web-search source Secret must contain api_key')
+              request = urllib.request.Request('https://vault.vault.svc:8200/v1/secret/data/' + os.environ['VAULT_PATH'], data=json.dumps({'data': data}).encode(), headers={'X-Vault-Token': token, 'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(request, context=ssl.create_default_context(cafile='/ca/service-ca.crt'), timeout=30) as response:
+                  print('Web-search secret written to Vault:', response.status)
+          volumeMounts:
+            - {name: web-search, mountPath: /input, readOnly: true}
+            - {name: token, mountPath: /vault-token, readOnly: true}
+            - {name: ca, mountPath: /ca, readOnly: true}
+      volumes:
+        - name: web-search
+          secret:
+            secretName: {{ $seed.sourceSecret | quote }}
+        - name: token
+          secret:
+            secretName: {{ $seed.vaultTokenSecret | quote }}
+            items:
+              - key: {{ $seed.vaultTokenKey | quote }}
+                path: token
+        - name: ca
+          configMap:
+            name: saw-vault-service-ca
+{{- end }}

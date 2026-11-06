@@ -22,6 +22,18 @@ saw:
     vaultTokenSecret: saw-vault-writer
     vaultTokenKey: token
     vaultPath: hub/inference
+  # This keeps the credential proxy mountable before an environment supplies a
+  # real Brave Search key. Replace the placeholder through AgnosticV; it is not
+  # a usable credential.
+  webSearchSeed:
+    enabled: true
+    sourceSecret: saw-web-search
+    secretData:
+      api_key: AGV_PLACEHOLDER_BRAVE_KEY_NOT_FOR_PRODUCTION
+      provider: brave
+    vaultTokenSecret: saw-vault-writer
+    vaultTokenKey: token
+    vaultPath: hub/web-search
   governance:
     values: {}
     customInference:
