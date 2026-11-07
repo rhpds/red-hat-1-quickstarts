@@ -4680,6 +4680,12 @@ class ProfileApplier:
         self.cli(*exec_cmd, "sh", "-c",
                  f"{oc_env} openclaw config set agents.entries.main.model "
                  f"{shlex.quote(json.dumps(openclaw_agent_model(model_id, selected)))}")
+        # Keep sessions that do not select an agent on the same current model.
+        # Otherwise OpenClaw can fall back to a stale provider after a profile
+        # or credential change.
+        self.cli(*exec_cmd, "sh", "-c",
+                 f"{oc_env} openclaw config set agents.defaults.model "
+                 f"{shlex.quote(json.dumps(openclaw_agent_model(model_id, selected)))}")
         # The request timeout: OpenClaw's per-provider HTTP timeout
         # (models.providers.<id>.timeoutSeconds; the custom provider's id is
         # the --custom-provider-id above, a native one's its type).
