@@ -3,7 +3,24 @@
 {{- $domain := required "saw.clusterDomain is required (without the apps. prefix)" $saw.clusterDomain -}}
 {{- $password := required "saw.keycloak.postgresPassword is required" $saw.keycloak.postgresPassword -}}
 {{- $vaultDefaults := dict "global" (dict "localClusterDomain" (printf "apps.%s" $domain)) "vault" (dict "server" (dict "image" (dict "tag" "2.1.2-ubi@sha256:b46738fbe5494e4141e94a0641e4e676e090af788b7729d8b3af2b62cadf5aef"))) -}}
-{{- $esoDefaults := dict "global" (dict "clusterDomain" $domain "hubClusterDomain" (printf "apps.%s" $domain)) "clusterGroup" (dict "applications" (dict "vault" (dict "chart" "hashicorp-vault"))) -}}
+{{- $esoConnection := fromYaml `
+vault:
+  externalAddress: https://vault.vault.svc:8200
+  external:
+    kubernetesMountPath: hub
+    kubernetesRole: hub-role
+    secretRef:
+      name: ocp-external-secrets
+      namespace: external-secrets
+      key: token
+caProvider:
+  hostCluster:
+    type: ConfigMap
+    name: saw-vault-service-ca
+    namespace: external-secrets
+    key: service-ca.crt
+` -}}
+{{- $esoDefaults := dict "ocpExternalSecrets" $esoConnection "global" (dict "clusterDomain" $domain "hubClusterDomain" (printf "apps.%s" $domain)) "clusterGroup" (dict "applications" (dict "vault" (dict "chart" "hashicorp-vault"))) -}}
 {{- $keycloakDefaults := dict "postgres" (dict "password" $password) "keycloak" (dict "userPasswords" (dict "externalSecret" (dict "enabled" true))) "ownerResolver" (dict "enabled" true) -}}
 {{- $apps := list
   (dict "name" "saw-vault" "release" "vault" "namespace" "vault" "path" "automation/gitops/infra/saw/vault" "wave" "0" "values" (mustMergeOverwrite $vaultDefaults (deepCopy $saw.vault.values)))

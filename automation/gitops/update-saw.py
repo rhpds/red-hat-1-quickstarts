@@ -58,6 +58,16 @@ def update(source, ref, destination):
                 raise ValueError(f'Upstream Keycloak PostgreSQL {field} template changed; review the integration')
             text = text.replace(old, '{{ .Values.postgres.' + field + ' | quote }}')
         postgres.write_text(text)
+        cnv = stage / 'charts/openshift-cnv/templates/hyperconverged.yaml'
+        text = cnv.read_text()
+        if text.count('  namespace: openshift-cnv') != 1 or 'annotations:' in text:
+            raise ValueError('Upstream HyperConverged template changed; review VirtIOFS integration')
+        cnv.write_text(text.replace('  namespace: openshift-cnv',
+            '  namespace: openshift-cnv\n  annotations:\n'
+            '    # OpenShift Virtualization 4.20 has no HCO field for config-volume VirtIOFS.\n'
+            "    # Append to HCO's generated gates; do not replace its existing feature list.\n"
+            '    kubevirt.kubevirt.io/jsonpatch: >-\n'
+            '      [{"op":"add","path":"/spec/configuration/developerConfiguration/featureGates/-","value":"EnableVirtioFsConfigVolumes"}]'))
         for file in stage.rglob('*.yaml'):
             text = file.read_text()
             for image, digest in PINS.items():

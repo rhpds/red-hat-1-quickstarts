@@ -51,7 +51,19 @@ Agnosticv installs `rhpds.quickstarts` from this repository's
 `automation/gitops/infra/ansible` and runs `rhpds.quickstarts.saw_prepare`
 after starting the infrastructure bootstrap. The same repository revision must
 contain both the collection and charts; set `saw_ansible_revision` when testing
-a different revision. SAW remains disabled until `saw_enabled` is true.
+a different revision. The role follows `saw_enabled` when explicitly supplied;
+otherwise it follows `ocp4_workload_gitops_bootstrap_helm_values.saw.enabled`.
+When neither is present, it remains disabled. This keeps the role aligned with
+AgnosticV's effective chart configuration without requiring a second catalog PR.
+
+The virtualization chart enables `EnableVirtioFsConfigVolumes` through the
+`kubevirt.kubevirt.io/jsonpatch` annotation on HyperConverged. This appends to
+HCO's generated feature gates and survives operator reconciliation. OpenShift
+Virtualization 4.20 does not expose this gate in the HCO spec; the annotation is
+an unsupported HCO override and can trigger `UnsupportedHCOModification`.
+It is required by the vendored SAW VM's config-volume mounts in this workshop.
+Review/remove this override when upgrading to a version where the feature is GA.
+See the [HCO configuration documentation](https://github.com/kubevirt/hyperconverged-cluster-operator/blob/main/docs/cluster-configuration.md).
 
 The role generates an Ed25519 SSH key in memory and writes it to the Vault KV v2
 path `secret/data/hub/ssh` only if no key exists. It preserves existing keys,
@@ -72,19 +84,59 @@ digest. For a private source, create a Docker config Secret in
 uses a dedicated service account with image-builder and nonroot permissions.
 It does not create or build the separate credential-proxy image.
 
-**Vault initialization is not automated by these charts.** Initialize and
-unseal Vault, configure KV v2 at `secret/`, configure Kubernetes authentication
-at `hub` with role `hub-role` for the External Secrets service account, and
-load the SSH keys, ingress CA, and any Keycloak user passwords described by the
-upstream pattern. Provision `saw-vault-writer` in the `vault` namespace with a
-`token` key containing a Vault token scoped to read and create/update
-`secret/data/hub/ssh`, and, when inference seeding is enabled, to write the
-configured inference path. Alternatively supply `saw_vault_writer_token` via
-agnosticv's secret mechanism; the role creates that Kubernetes Secret without
-logging the value. The optional seed Job uses the same token to write the
-inference Secret to Vault. The role does not initialize or unseal Vault,
-configure Vault auth, or create users. Those steps must be completed before
-the workspace can become ready.
+### Managed workshop Vault
+
+By default, `saw_prepare` bootstraps the dedicated single-node workshop Vault
+before running SSH provisioning. It initializes only an uninitialized Vault,
+saves the initialization response in `vault/saw-vault-bootstrap` under
+`init.json`, unseals it, enables KV v2 at `secret/`, and configures Kubernetes
+auth at `hub` with role `hub-role`. That role grants the External Secrets service
+account read access to `secret/data/hub/*`. Vault uses its rotating pod service
+account token for Kubernetes TokenReview. External Secrets connects to the
+internal Vault service with the injected OpenShift service CA.
+
+The bootstrap also writes the public ingress CA at `hub/cluster-ingress-ca`
+and creates `vault/saw-vault-writer` with a token scoped to read/write
+`secret/data/hub/*`. The writer has a 32-day requested TTL, subject to Vault's
+configured maximum; rerunning preparation replaces an expired token. Existing
+valid writer tokens, SSH keys, provider credentials and unrelated Vault data
+are preserved. Supply inference/web-search API keys through the existing seed
+mechanism or your secret provisioning; bootstrap does not invent provider keys
+or create Keycloak users.
+
+This is workshop bootstrap, not production auto-unseal: the initial root token
+and one unseal key are retained in the bootstrap Kubernetes Secret. Restrict
+access to the `vault` namespace and back up this Secret together with the PVC.
+The Job can only read/update the two named Secrets, and its RoleBinding is
+removed after the run. Credentials are never passed in Job arguments or printed
+in logs. The Job uses TLS verification for both APIs.
+
+On a subsequent run, preparation reuses the saved credentials and unseals Vault
+if needed. A Vault pod restart requires rerunning preparation; no continuous
+unseal controller is installed. If Vault is already initialized but the bootstrap
+Secret is missing, preparation stops rather than reinitializing or deleting
+storage. An interruption between initialization and saving its response requires
+operator recovery; never delete the PVC as an automatic retry. An initializer
+lock with no saved response also fails closed for a different Job: inspect the
+previous Job and Vault status before clearing the `saw.redhat.com/initializer`
+annotation. Keep a single cluster provisioning run active at a time.
+
+For an externally managed, already initialized Vault, set
+`saw_prepare_vault_bootstrap: false` and supply the existing writer Secret or
+`saw_vault_writer_token` through AgnosticV secrets. Providing that token disables
+automatic bootstrap by default. In this mode, configure unsealing, KV v2,
+Kubernetes auth, the ingress CA and policies yourself. Bootstrap is designed for
+the default Vault/External Secrets chart names; keep role variables and chart
+values aligned if overriding their names or service account identities.
+
+### Existing clusters
+
+Merging the PR updates the GitOps-managed HyperConverged and External Secrets
+configuration after synchronization. It does **not** rerun AgnosticV's Ansible
+workloads. For an already provisioned cluster, rerun
+`rhpds.quickstarts.saw_prepare` with the updated collection and the same cluster
+variables, then retry failed SAW Application syncs. New provisions use the updated
+role automatically when the collection revision points at `main`.
 
 `secretData` is rendered as a Kubernetes Secret, but its contents are also
 present in the Argo CD Application's Helm values. Restrict access to that

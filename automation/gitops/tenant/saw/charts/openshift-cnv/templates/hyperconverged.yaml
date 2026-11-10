@@ -3,4 +3,9 @@ kind: HyperConverged
 metadata:
   name: kubevirt-hyperconverged
   namespace: openshift-cnv
+  annotations:
+    # OpenShift Virtualization 4.20 has no HCO field for config-volume VirtIOFS.
+    # Append to HCO's generated gates; do not replace its existing feature list.
+    kubevirt.kubevirt.io/jsonpatch: >-
+      [{"op":"add","path":"/spec/configuration/developerConfiguration/featureGates/-","value":"EnableVirtioFsConfigVolumes"}]
 spec: {}

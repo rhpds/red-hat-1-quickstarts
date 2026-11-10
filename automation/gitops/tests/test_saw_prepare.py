@@ -119,11 +119,11 @@ class SawPrepareTests(unittest.TestCase):
             play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'gather_facts': False, 'tasks': [{'import_tasks': str(installed / 'tasks/provision.yml')}]}]))
             subprocess.run(['ansible-playbook', '-i', 'localhost,', '--syntax-check', str(play)], env=env, check=True, capture_output=True, text=True)
             variables = yaml.safe_load((installed / 'defaults/main.yml').read_text())
-            variables.update({'role_path': str(installed), '_saw_ssh_job': 'saw-ssh-seed-test', '_saw_mirror_job': 'saw-mirror-test',
+            variables.update({'role_path': str(installed), '_saw_run_id': 'test', '_saw_ssh_job': 'saw-ssh-seed-test', '_saw_mirror_job': 'saw-mirror-test',
                               '_saw_registry_destination': 'registry.example/openshell-agents/gateway:fixed', 'saw_prepare_mirror_source_secret': ''})
             play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'vars': variables,
                 'tasks': [{'ansible.builtin.template': {'src': str(installed / 'templates' / name), 'dest': str(tmp / name[:-3])}}
-                          for name in ('ssh-job.yaml.j2', 'mirror-job.yaml.j2')]}]))
+                          for name in ('ssh-job.yaml.j2', 'mirror-job.yaml.j2', 'vault-job.yaml.j2')]}]))
             result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             ssh = yaml.safe_load((tmp / 'ssh-job.yaml').read_text())
@@ -152,7 +152,8 @@ with open(os.environ['SAW_TEST_EVENTS'], 'a') as out:
 digest = 'sha256:eaf603d12d763c7154c04fcb78b8cae8cebfc3bdf25a155c63adfa6f74e7d31d'
 if info:
     kind = args['kind']
-    if kind == 'Secret': resources = [{'data': {'token': 'fake'}}]
+    if kind == 'ConfigMap': resources = [{'data': {'ca-bundle.crt': 'test-ca'}}]
+    elif kind == 'Secret': resources = [{'data': {'token': 'fake'}}]
     elif kind == 'Job': resources = [{'status': {'succeeded': 1}}]
     elif kind == 'Application': resources = [{'status': {'health': {'status': 'Healthy'}, 'sync': {'status': 'Synced'}}}]
     elif kind == 'ImageStreamTag': resources = [{'image': {'metadata': {'name': digest}}}] if os.path.exists(os.environ['SAW_TEST_MIRRORED']) or os.environ.get('SAW_TEST_EXISTS') == '1' else []
@@ -166,7 +167,7 @@ module.exit_json(changed=True)
                 (plugins / name).write_text(stub)
             play = tmp / 'playbook.yaml'
             play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
-                                             'vars': {'saw_enabled': True, 'saw_prepare_retries': 2, 'saw_prepare_delay': 0},
+                                             'vars': {'ocp4_workload_gitops_bootstrap_helm_values': {'saw': {'enabled': True}}, 'saw_prepare_retries': 2, 'saw_prepare_delay': 0},
                                              'roles': ['rhpds.quickstarts.saw_prepare']}]))
             env = os.environ.copy()
             env.update({'ANSIBLE_LOCAL_TEMP': str(tmp / 'local'), 'ANSIBLE_REMOTE_TEMP': str(tmp / 'remote'),
@@ -176,12 +177,19 @@ module.exit_json(changed=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             events = [json.loads(line) for line in (tmp / 'events').read_text().splitlines()]
             self.assertTrue(any((e['template'] or '').endswith('ssh-job.yaml.j2') for e in events))
+            templates = [e['template'] for e in events if e['template']]
+            self.assertLess(templates.index('vault-job.yaml.j2'), templates.index('ssh-job.yaml.j2'))
             self.assertTrue(any((e['template'] or '').endswith('mirror-job.yaml.j2') for e in events))
             (tmp / 'events').write_text('')
             result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             events = [json.loads(line) for line in (tmp / 'events').read_text().splitlines()]
             self.assertFalse(any((e['template'] or '').endswith('mirror-job.yaml.j2') for e in events))
+            (tmp / 'events').write_text('')
+            result = subprocess.run(['ansible-playbook', '-i', 'localhost,', '-e', '{"saw_enabled": false}', str(play)], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((tmp / 'events').read_text(), '')
+
 
 
 @unittest.skipUnless(os.environ.get('AGNOSTICV_CLUSTER_CONFIG') and os.environ.get('AGNOSTICV_TENANT_CONFIG'), 'Set both agnosticv configuration paths')
