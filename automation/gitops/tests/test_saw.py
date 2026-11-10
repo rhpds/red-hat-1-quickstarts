@@ -6,6 +6,7 @@ import os
 import tempfile
 from unittest import mock
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -61,6 +62,15 @@ class SawIntegrationTests(unittest.TestCase):
         store = next(d for d in resources['saw-external-secrets'] if d['kind'] == 'ClusterSecretStore')
         self.assertEqual(store['spec']['provider']['vault']['caProvider']['name'], 'saw-vault-service-ca')
         self.assertEqual(store['spec']['provider']['vault']['auth']['kubernetes']['role'], 'hub-role')
+        policy = next(d for d in docs if d['kind'] == 'NetworkPolicy' and d['metadata']['name'] == 'saw-allow-vault-service')
+        self.assertEqual(policy['spec']['podSelector']['matchLabels'], {'app.kubernetes.io/name': 'external-secrets'})
+        egress = policy['spec']['egress'][0]
+        self.assertEqual(egress['ports'], [{'protocol': 'TCP', 'port': urlparse(store['spec']['provider']['vault']['server']).port}])
+        self.assertEqual(egress['to'][0]['namespaceSelector']['matchLabels']['kubernetes.io/metadata.name'], 'vault')
+        vault_pod = next(d for d in resources['saw-vault'] if d['kind'] == 'StatefulSet')['spec']['template']
+        for key, value in egress['to'][0]['podSelector']['matchLabels'].items():
+            self.assertEqual(vault_pod['metadata']['labels'][key], value)
+
         self.assertTrue(any(d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'saw-vault-service-ca' for d in docs))
         self.assertTrue(any(d['kind'] == 'ClusterSecretStore' and d['spec']['provider']['vault']['server'] == 'https://vault.vault.svc:8200' for d in resources['saw-external-secrets']))
         vault = next(d for d in resources['saw-vault'] if d['kind'] == 'StatefulSet')
