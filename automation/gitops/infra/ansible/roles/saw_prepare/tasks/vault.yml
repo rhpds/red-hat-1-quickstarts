@@ -1,0 +1,108 @@
+---
+- name: Read the public OpenShift ingress CA
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    namespace: openshift-config-managed
+    name: default-ingress-cert
+  register: _saw_ingress_ca
+  retries: "{{ saw_prepare_retries }}"
+  delay: "{{ saw_prepare_delay }}"
+  until: >-
+    _saw_ingress_ca.resources | length == 1 and
+    (_saw_ingress_ca.resources[0].data['ca-bundle.crt'] | default('') | length > 0)
+
+- name: Prepare bootstrap CA bundles
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop:
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: saw-vault-service-ca
+        namespace: "{{ saw_prepare_vault_namespace }}"
+        annotations:
+          service.beta.openshift.io/inject-cabundle: "true"
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: saw-ingress-ca
+        namespace: "{{ saw_prepare_vault_namespace }}"
+      data:
+        ca-bundle.crt: "{{ _saw_ingress_ca.resources[0].data['ca-bundle.crt'] }}"
+
+# Do not set data: existing credentials must survive a repeat provisioning run.
+- name: Ensure named bootstrap and writer Secrets exist without replacing data
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ item }}"
+        namespace: "{{ saw_prepare_vault_namespace }}"
+      type: Opaque
+  loop:
+    - "{{ saw_prepare_vault_bootstrap_secret }}"
+    - "{{ saw_prepare_vault_token_secret }}"
+
+- name: Configure the Vault bootstrap Job identity
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop:
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata: {name: saw-vault-bootstrap, namespace: "{{ saw_prepare_vault_namespace }}"}
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata: {name: saw-vault-bootstrap, namespace: "{{ saw_prepare_vault_namespace }}"}
+      rules:
+        - apiGroups: [""]
+          resources: [secrets]
+          resourceNames: ["{{ saw_prepare_vault_bootstrap_secret }}", "{{ saw_prepare_vault_token_secret }}"]
+          verbs: [get, update]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata: {name: "saw-vault-bootstrap-{{ _saw_run_id }}", namespace: "{{ saw_prepare_vault_namespace }}"}
+      roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: saw-vault-bootstrap}
+      subjects:
+        - {kind: ServiceAccount, name: saw-vault-bootstrap, namespace: "{{ saw_prepare_vault_namespace }}"}
+
+- name: Initialize and configure the dedicated workshop Vault
+  block:
+    - name: Start the Vault bootstrap Job
+      kubernetes.core.k8s:
+        state: present
+        template: vault-job.yaml.j2
+
+    - name: Wait for Vault bootstrap completion
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        namespace: "{{ saw_prepare_vault_namespace }}"
+        name: "saw-vault-bootstrap-{{ _saw_run_id }}"
+      register: _saw_vault_job
+      retries: "{{ saw_prepare_retries }}"
+      delay: "{{ saw_prepare_delay }}"
+      until: >-
+        _saw_vault_job.resources | length > 0 and
+        ((_saw_vault_job.resources[0].status.succeeded | default(0) | int > 0) or
+         (_saw_vault_job.resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Failed') | selectattr('status', 'equalto', 'True') | list | length > 0))
+
+    - name: Require successful Vault bootstrap
+      ansible.builtin.assert:
+        that: _saw_vault_job.resources[0].status.succeeded | default(0) | int > 0
+        fail_msg: >-
+          Vault bootstrap failed; inspect the saw-vault-bootstrap Job logs.
+          Preserve the bootstrap Secret and Vault PVC for recovery.
+  always:
+    - name: Revoke the bootstrap Job's access to credentials
+      kubernetes.core.k8s:
+        state: absent
+        api_version: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        namespace: "{{ saw_prepare_vault_namespace }}"
+        name: "saw-vault-bootstrap-{{ _saw_run_id }}"

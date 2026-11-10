@@ -48,15 +48,21 @@ class SawIntegrationTests(unittest.TestCase):
 
     def test_infra_opt_in_and_children(self):
         chart = ROOT / 'infra/bootstrap'
-        self.assertEqual([x['kind'] for x in render(chart, {})], ['ConfigMap'])
+        self.assertEqual([x['kind'] for x in render(chart, {})], ['ConfigMap', 'ArgoCD'])
         docs = render(chart, {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'pass: # example'}}})
         apps = {x['metadata']['name']: x for x in docs if x['kind'] == 'Application'}
         self.assertEqual(set(apps), {'saw-vault', 'saw-external-secrets', 'saw-virtualization', 'saw-keycloak', 'saw-governance-policy', 'saw-governance-interceptor'})
         subscriptions = {x['spec']['name']: x['spec']['channel'] for x in docs if x['kind'] == 'Subscription'}
         self.assertEqual(subscriptions, {'kubevirt-hyperconverged': 'stable', 'rhbk-operator': 'stable-v26', 'openshift-external-secrets-operator': 'stable-v1'})
         resources = {name: child(app) for name, app in apps.items()}
-        self.assertTrue(any(d['kind'] == 'HyperConverged' for d in resources['saw-virtualization']))
-        self.assertTrue(any(d['kind'] == 'ClusterSecretStore' and d['spec']['provider']['vault']['server'] == 'https://vault-vault.apps.test.example' for d in resources['saw-external-secrets']))
+        hco = next(d for d in resources['saw-virtualization'] if d['kind'] == 'HyperConverged')
+        patch = json.loads(hco['metadata']['annotations']['kubevirt.kubevirt.io/jsonpatch'])
+        self.assertEqual(patch, [{'op': 'add', 'path': '/spec/configuration/developerConfiguration/featureGates/-', 'value': 'EnableVirtioFsConfigVolumes'}])
+        store = next(d for d in resources['saw-external-secrets'] if d['kind'] == 'ClusterSecretStore')
+        self.assertEqual(store['spec']['provider']['vault']['caProvider']['name'], 'saw-vault-service-ca')
+        self.assertEqual(store['spec']['provider']['vault']['auth']['kubernetes']['role'], 'hub-role')
+        self.assertTrue(any(d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'saw-vault-service-ca' for d in docs))
+        self.assertTrue(any(d['kind'] == 'ClusterSecretStore' and d['spec']['provider']['vault']['server'] == 'https://vault.vault.svc:8200' for d in resources['saw-external-secrets']))
         vault = next(d for d in resources['saw-vault'] if d['kind'] == 'StatefulSet')
         self.assertRegex(vault['spec']['template']['spec']['containers'][0]['image'], r'@sha256:[a-f0-9]{64}$')
         self.assertTrue(any(d['kind'] == 'Keycloak' for d in resources['saw-keycloak']))
@@ -149,7 +155,8 @@ class SawRefreshTests(unittest.TestCase):
                 chart = source / 'charts' / name
                 chart.mkdir(parents=True)
                 (chart / 'Chart.yaml').write_text(f'name: {name}\nversion: 0.1.0\n')
-            files = {'charts/saw-users/templates/applications.yaml': 'path: "charts/openshell-saw"\n',
+            files = {'charts/openshift-cnv/templates/hyperconverged.yaml': 'apiVersion: hco.kubevirt.io/v1beta1\nkind: HyperConverged\nmetadata:\n  name: kubevirt-hyperconverged\n  namespace: openshift-cnv\nspec: {}\n',
+                     'charts/saw-users/templates/applications.yaml': 'path: "charts/openshell-saw"\n',
                      'charts/openshell-rhdh/templates/applicationset.yaml': 'path: charts/saw-users\n',
                      'charts/openshell-keycloak/values.yaml': 'image: registry.access.redhat.com/ubi9/python-311:latest\n',
                      'charts/openshell-keycloak/templates/postgres.yaml': 'username: {{ .Values.postgres.username }}\npassword: {{ .Values.postgres.password }}\n',
@@ -170,6 +177,7 @@ class SawRefreshTests(unittest.TestCase):
             self.assertIn('automation/gitops/tenant/saw/charts/', (destination / 'charts/saw-users/templates/applications.yaml').read_text())
             self.assertIn('@sha256:', (destination / 'charts/openshell-keycloak/values.yaml').read_text())
             self.assertEqual((destination / 'README.md').read_text(), 'local documentation\n')
+            self.assertIn('EnableVirtioFsConfigVolumes', (destination / 'charts/openshift-cnv/templates/hyperconverged.yaml').read_text())
             updater.update(source, 'HEAD', destination)
             self.assertEqual(snapshot(), before)
 

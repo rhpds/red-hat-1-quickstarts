@@ -1,5 +1,11 @@
 ---
-saw_prepare_enabled: "{{ saw_enabled | default(false) | bool }}"
+# Follow the effective bootstrap Helm value when AgnosticV does not set saw_enabled.
+saw_prepare_enabled: >-
+  {{ saw_enabled | default((ocp4_workload_gitops_bootstrap_helm_values | default({})).get('saw', {}).get('enabled', false)) | bool }}
+saw_prepare_vault_bootstrap: "{{ saw_vault_writer_token | default('') | length == 0 }}"
+saw_prepare_vault_bootstrap_secret: saw-vault-bootstrap
+saw_prepare_external_secrets_namespace: external-secrets
+saw_prepare_external_secrets_service_account: ocp-external-secrets
 saw_prepare_namespace: openshell-agents
 saw_prepare_vault_namespace: vault
 saw_prepare_vault_token_secret: "{{ saw_vault_writer_secret | default('saw-vault-writer') }}"

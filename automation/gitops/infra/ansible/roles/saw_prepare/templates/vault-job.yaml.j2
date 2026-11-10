@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ ('saw-vault-bootstrap-' ~ _saw_run_id) | to_json }}
+  namespace: {{ saw_prepare_vault_namespace | to_json }}
+  labels:
+    app.kubernetes.io/part-of: saw-prepare
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      serviceAccountName: saw-vault-bootstrap
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: bootstrap
+          image: {{ saw_prepare_python_image | to_json }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          env:
+            - {name: VAULT_URL, value: {{ ('https://vault.' ~ saw_prepare_vault_namespace ~ '.svc:8200') | to_json }}}
+            - {name: VAULT_NAMESPACE, value: {{ saw_prepare_vault_namespace | to_json }}}
+            - {name: STATE_SECRET, value: {{ saw_prepare_vault_bootstrap_secret | to_json }}}
+            - {name: WRITER_SECRET, value: {{ saw_prepare_vault_token_secret | to_json }}}
+            - {name: WRITER_KEY, value: {{ saw_prepare_vault_token_key | to_json }}}
+            - {name: RUN_ID, value: {{ _saw_run_id | to_json }}}
+            - {name: ESO_NAMESPACE, value: {{ saw_prepare_external_secrets_namespace | to_json }}}
+            - {name: ESO_ACCOUNT, value: {{ saw_prepare_external_secrets_service_account | to_json }}}
+          command: [python, -c]
+          args:
+            - |
+{{ lookup('ansible.builtin.file', role_path ~ '/files/bootstrap_vault.py') | indent(14, true) }}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: ca, mountPath: /ca, readOnly: true}
+            - {name: ingress-ca, mountPath: /ingress-ca, readOnly: true}
+      volumes:
+        - name: ca
+          configMap: {name: saw-vault-service-ca}
+        - name: ingress-ca
+          configMap: {name: saw-ingress-ca}
