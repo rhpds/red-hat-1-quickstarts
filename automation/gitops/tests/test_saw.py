@@ -6,6 +6,7 @@ import os
 import tempfile
 from unittest import mock
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -61,15 +62,33 @@ class SawIntegrationTests(unittest.TestCase):
         store = next(d for d in resources['saw-external-secrets'] if d['kind'] == 'ClusterSecretStore')
         self.assertEqual(store['spec']['provider']['vault']['caProvider']['name'], 'saw-vault-service-ca')
         self.assertEqual(store['spec']['provider']['vault']['auth']['kubernetes']['role'], 'hub-role')
+        policy = next(d for d in docs if d['kind'] == 'NetworkPolicy' and d['metadata']['name'] == 'saw-allow-vault-service')
+        self.assertEqual(policy['spec']['podSelector']['matchLabels'], {'app.kubernetes.io/name': 'external-secrets'})
+        egress = policy['spec']['egress'][0]
+        self.assertEqual(egress['ports'], [{'protocol': 'TCP', 'port': urlparse(store['spec']['provider']['vault']['server']).port}])
+        self.assertEqual(egress['to'][0]['namespaceSelector']['matchLabels']['kubernetes.io/metadata.name'], 'vault')
+        vault_pod = next(d for d in resources['saw-vault'] if d['kind'] == 'StatefulSet')['spec']['template']
+        for key, value in egress['to'][0]['podSelector']['matchLabels'].items():
+            self.assertEqual(vault_pod['metadata']['labels'][key], value)
+
         self.assertTrue(any(d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'saw-vault-service-ca' for d in docs))
         self.assertTrue(any(d['kind'] == 'ClusterSecretStore' and d['spec']['provider']['vault']['server'] == 'https://vault.vault.svc:8200' for d in resources['saw-external-secrets']))
         vault = next(d for d in resources['saw-vault'] if d['kind'] == 'StatefulSet')
         self.assertRegex(vault['spec']['template']['spec']['containers'][0]['image'], r'@sha256:[a-f0-9]{64}$')
-        self.assertTrue(any(d['kind'] == 'Keycloak' for d in resources['saw-keycloak']))
+        keycloak = next(d for d in resources['saw-keycloak'] if d['kind'] == 'Keycloak')
+        self.assertEqual(keycloak['spec']['hostname']['hostname'], 'https://openshell-keycloak-ingress-saw-keycloak.apps.test.example')
+
         db_secret = next(d for d in resources['saw-keycloak'] if d['kind'] == 'Secret' and d['metadata']['name'] == 'keycloak-db-secret')
         self.assertEqual(db_secret['stringData']['password'], 'pass: # example')
         for docs in resources.values():
             assert_pod_images_pinned(self, docs)
+
+    def test_keycloak_uses_https_for_bare_hostnames(self):
+        chart = ROOT / 'tenant/saw/charts/openshell-keycloak'
+        for hostname in ['sso.example.test', 'https://sso.example.test']:
+            docs = render(chart, {'keycloak': {'hostname': hostname}}, namespace='saw-keycloak')
+            kc = next(d for d in docs if d['kind'] == 'Keycloak')
+            self.assertEqual(kc['spec']['hostname']['hostname'], 'https://sso.example.test')
 
     def test_seed_uses_secret_references_and_supports_agnosticv_values(self):
         values = {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'test-password'},
@@ -162,6 +181,9 @@ class SawRefreshTests(unittest.TestCase):
                      'charts/openshell-keycloak/templates/postgres.yaml': 'username: {{ .Values.postgres.username }}\npassword: {{ .Values.postgres.password }}\n',
                      'image-builder-charts/helm/example/Chart.yaml': 'name: example\nversion: 0.1.0\n',
                      'overrides/governance-profiles/kustomization.yaml': 'kind: Kustomization\n'}
+            for patch in json.loads((ROOT / 'saw-patches.json').read_text()):
+                files.setdefault(patch['file'], '')
+                files[patch['file']] += patch['old']
             for name, contents in files.items():
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,6 +199,9 @@ class SawRefreshTests(unittest.TestCase):
             self.assertIn('automation/gitops/tenant/saw/charts/', (destination / 'charts/saw-users/templates/applications.yaml').read_text())
             self.assertIn('@sha256:', (destination / 'charts/openshell-keycloak/values.yaml').read_text())
             self.assertEqual((destination / 'README.md').read_text(), 'local documentation\n')
+            for patch in json.loads((ROOT / 'saw-patches.json').read_text()):
+                self.assertIn(patch['new'], (destination / patch['file']).read_text())
+
             self.assertIn('EnableVirtioFsConfigVolumes', (destination / 'charts/openshift-cnv/templates/hyperconverged.yaml').read_text())
             updater.update(source, 'HEAD', destination)
             self.assertEqual(snapshot(), before)

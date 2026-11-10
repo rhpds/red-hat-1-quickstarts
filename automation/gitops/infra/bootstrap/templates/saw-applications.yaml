@@ -21,7 +21,7 @@ caProvider:
     key: service-ca.crt
 ` -}}
 {{- $esoDefaults := dict "ocpExternalSecrets" $esoConnection "global" (dict "clusterDomain" $domain "hubClusterDomain" (printf "apps.%s" $domain)) "clusterGroup" (dict "applications" (dict "vault" (dict "chart" "hashicorp-vault"))) -}}
-{{- $keycloakDefaults := dict "postgres" (dict "password" $password) "keycloak" (dict "userPasswords" (dict "externalSecret" (dict "enabled" true))) "ownerResolver" (dict "enabled" true) -}}
+{{- $keycloakDefaults := dict "postgres" (dict "password" $password) "keycloak" (dict "hostname" (printf "https://openshell-keycloak-ingress-saw-keycloak.apps.%s" $domain) "userPasswords" (dict "externalSecret" (dict "enabled" true))) "ownerResolver" (dict "enabled" true) -}}
 {{- $apps := list
   (dict "name" "saw-vault" "release" "vault" "namespace" "vault" "path" "automation/gitops/infra/saw/vault" "wave" "0" "values" (mustMergeOverwrite $vaultDefaults (deepCopy $saw.vault.values)))
   (dict "name" "saw-external-secrets" "namespace" "external-secrets" "path" "automation/gitops/infra/saw/external-secrets" "wave" "0" "values" (mustMergeOverwrite $esoDefaults (deepCopy $saw.externalSecrets.values)))

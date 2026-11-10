@@ -1,0 +1,17 @@
+[
+  {
+    "file": "charts/openshell-keycloak/files/owner-resolver.py",
+    "old": "    account = kc_call(url, realm, token, f\"/clients/{client['id']}/service-account-user\", ctx=ctx)\n",
+    "new": "    # Recent Keycloak releases require the built-in scope as well as admin roles.\n    # Older releases lack this scope and do not enforce the audience check.\n    for scope in kc_call(url, realm, token, \"/client-scopes\", ctx=ctx) or []:\n        if scope.get(\"name\") == \"kc-admin-api\":\n            kc_call(url, realm, token,\n                    f\"/clients/{client['id']}/default-client-scopes/{scope['id']}\", \"PUT\", ctx=ctx)\n    account = kc_call(url, realm, token, f\"/clients/{client['id']}/service-account-user\", ctx=ctx)\n"
+  },
+  {
+    "file": "charts/openshell-keycloak/files/redirect-registrar.py",
+    "old": "    account = kc(\"GET\", f\"/clients/{client['id']}/service-account-user\")\n",
+    "new": "    # Admin roles alone no longer authorize API access on recent Keycloak.\n    for scope in kc(\"GET\", \"/client-scopes\") or []:\n        if scope.get(\"name\") == \"kc-admin-api\":\n            kc(\"PUT\", f\"/clients/{client['id']}/default-client-scopes/{scope['id']}\")\n    account = kc(\"GET\", f\"/clients/{client['id']}/service-account-user\")\n"
+  },
+  {
+    "file": "charts/openshell-keycloak/templates/keycloak.yaml",
+    "old": "    hostname: {{ .Values.keycloak.hostname }}\n",
+    "new": "    hostname: {{ if contains \"://\" .Values.keycloak.hostname }}{{ .Values.keycloak.hostname | quote }}{{ else }}{{ printf \"https://%s\" .Values.keycloak.hostname | quote }}{{ end }}\n"
+  }
+]

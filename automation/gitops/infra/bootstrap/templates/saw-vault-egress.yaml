@@ -1,0 +1,27 @@
+{{- if eq (lower (toString .Values.saw.enabled)) "true" }}
+# The ESO operator installs default-deny egress and a route-only (443) rule.
+# The SAW ClusterSecretStore uses Vault's internal TLS service on port 8200.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: saw-allow-vault-service
+  namespace: external-secrets
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: external-secrets
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              app.kubernetes.io/instance: vault
+              component: server
+      ports:
+        - protocol: TCP
+          port: 8200
+{{- end }}

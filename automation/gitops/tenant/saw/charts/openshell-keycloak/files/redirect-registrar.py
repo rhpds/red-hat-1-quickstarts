@@ -145,6 +145,10 @@ def bootstrap():
     elif any(client.get(k) != v for k, v in REGISTRAR_CLIENT.items() if k != "description"):
         kc("PUT", f"/clients/{client['id']}", {**client, **REGISTRAR_CLIENT})
         log(f"client {client_id} settings restored")
+    # Admin roles alone no longer authorize API access on recent Keycloak.
+    for scope in kc("GET", "/client-scopes") or []:
+        if scope.get("name") == "kc-admin-api":
+            kc("PUT", f"/clients/{client['id']}/default-client-scopes/{scope['id']}")
     account = kc("GET", f"/clients/{client['id']}/service-account-user")
     management = kc.client("realm-management")
     role = kc("GET", f"/clients/{management['id']}/roles/manage-clients")
