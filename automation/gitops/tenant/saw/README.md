@@ -188,3 +188,28 @@ repository and the same revision. Pre-create the named Keycloak account; the
 owner resolver binds the workspace to its subject. By default, removing a
 user does not delete their VM or namespace. This integration does not install
 the optional RHDH self-service portal or its pipelines.
+
+### Keycloak callback and owner resolution
+
+The cluster bootstrap fixes Keycloak's frontend URL to its public HTTPS route.
+Both automation clients attach the built-in `kc-admin-api` scope when the server
+provides it. New Keycloak releases require this scope and its Admin API audience
+in addition to the existing realm-management roles. Without it, the redirect
+registrar and owner resolver receive HTTP 401: browser sign-in reports
+`Invalid parameter: redirect_uri`, and sandbox setup cannot resolve its owner.
+See the [Keycloak upgrade guidance](https://www.keycloak.org/docs/26.8.2/upgrading/#_admin_api_audience).
+Older servers without the scope retain their existing behavior.
+
+On an existing cluster, synchronize `saw-keycloak`; the script checksum restarts
+both controllers and reruns their bootstrap. Confirm that the registrar reports
+registered callbacks and that each tenant's `saw-owner-subject` ConfigMap has a
+`subject`. Restart the guest's `saw-apply.service` after the owner resolves if it
+is still retrying. A realm import does not update existing user accounts: create
+the exact `saw.userName` in the `openshell` realm and assign `openshell-user`.
+Use a password meeting that realm's policy, and complete the same profile fields
+as the import template. The shared OpenShift workshop password may not satisfy
+the OpenShell password policy.
+
+`update-saw.py` reapplies the reviewed compatibility changes listed in
+`saw-patches.json`. It fails when an upstream edit no longer matches the expected
+patch location so the next vendor refresh cannot silently drop these fixes.

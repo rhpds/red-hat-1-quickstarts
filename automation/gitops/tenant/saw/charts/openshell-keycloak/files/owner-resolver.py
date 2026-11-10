@@ -95,6 +95,12 @@ def bootstrap():
         client = exact_client(url, realm, token, client_id, ctx)
     elif any(client.get(key) != value for key, value in spec.items()):
         raise RuntimeError("resolver client has unexpected settings")
+    # Recent Keycloak releases require the built-in scope as well as admin roles.
+    # Older releases lack this scope and do not enforce the audience check.
+    for scope in kc_call(url, realm, token, "/client-scopes", ctx=ctx) or []:
+        if scope.get("name") == "kc-admin-api":
+            kc_call(url, realm, token,
+                    f"/clients/{client['id']}/default-client-scopes/{scope['id']}", "PUT", ctx=ctx)
     account = kc_call(url, realm, token, f"/clients/{client['id']}/service-account-user", ctx=ctx)
     management = exact_client(url, realm, token, "realm-management", ctx)
     management_id = management["id"]

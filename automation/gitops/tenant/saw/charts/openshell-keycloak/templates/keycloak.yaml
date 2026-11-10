@@ -24,7 +24,7 @@ spec:
       route.openshift.io/termination: edge
   {{- if .Values.keycloak.hostname }}
   hostname:
-    hostname: {{ .Values.keycloak.hostname }}
+    hostname: {{ if contains "://" .Values.keycloak.hostname }}{{ .Values.keycloak.hostname | quote }}{{ else }}{{ printf "https://%s" .Values.keycloak.hostname | quote }}{{ end }}
   {{- end }}
   proxy:
     headers: xforwarded
