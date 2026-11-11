@@ -7,6 +7,10 @@ A QuickStart is a pre-built, deployable reference application that turns a Red H
 
 The whole lab is driven from the browser. The RAG application is already deployed and already loaded with data — you open the *RAG UI* tab and you're in. No console login, no commands, no setup in front of the customer.
 
+ifdef::openshell_password[]
+To use the optional *OpenClaw* tab, sign in with username `{user}` and password `{openshell_password}`.
+endif::[]
+
 == Who This Is For
 
 This lab is written for Red Hat Solution Architects who already know their way around Red Hat OpenShift and Red Hat OpenShift AI, but haven't yet used QuickStarts as a way to sell. You should be comfortable navigating the OpenShift console and the basic ideas of projects and pods. You do not need any prior experience with RAG, vector databases, or agentic AI — the lab builds that as you go.

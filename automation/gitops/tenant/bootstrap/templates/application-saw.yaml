@@ -26,8 +26,18 @@
 {{- fail "saw.inferenceHost must be a hostname without a scheme, port, or wildcard" -}}
 {{- end -}}
 {{- $_ := set $defaults.defaults.openshellSaw "egress" (dict "extraAllow" (list $saw.inferenceHost)) -}}
+{{- $_ := set $defaults.defaults.openshellSaw.credentialProxy "customInferenceHost" $saw.inferenceHost -}}
+{{- end -}}
+{{- if eq (lower (toString (($saw.inferenceSeed | default dict).enabled))) "true" -}}
+{{- $_ := set (index $defaults.users 0) "vaultPrefix" (printf "secret/data/hub/saw-%s" $name) -}}
+{{- $_ := set $defaults.global "webSearch" (dict "enabled" false) -}}
+{{- $_ := set $defaults.defaults "profiles" (list "custom-inference") -}}
 {{- end -}}
 {{- $values := mustMergeOverwrite $defaults (deepCopy ($saw.values | default dict)) -}}
+{{- if eq (lower (toString (($saw.inferenceSeed | default dict).enabled))) "true" -}}
+{{- $_ := set $values.defaults "profiles" (list "custom-inference") -}}
+{{- $_ := set $values.global "webSearch" (dict "enabled" false) -}}
+{{- end -}}
 {{- $_ := set $values.global "repoURL" $repo -}}
 {{- $_ := set $values.global "targetRevision" $revision -}}
 {{- $_ := set $values.global "vpArgoNamespace" .Values.gitops.namespace -}}

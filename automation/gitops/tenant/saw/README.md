@@ -162,6 +162,37 @@ are limited by the upstream provider to HTTPS on port 443.
 
 ## Tenant bootstrap
 
+For LB2142, the tenant bootstrap can seed the tenant's existing LiteLLM
+virtual key into `hub/saw-<user>/inference`. Set `saw.inferenceHost` to the
+LiteLLM HTTPS hostname and `saw.inferenceSeed.enabled` to true, with
+`secretData.api_key`, `url` (ending in `/v1`) and `model`. Set the same host in
+the cluster's `saw.governance.customInference.host`. The resulting workspace
+uses the custom-inference profile, exposes its OpenClaw UI, and disables web
+search rather than requiring a nonexistent Brave key. Each user has a separate
+Vault path; the shared SSH and ingress CA paths remain unchanged.
+
+Set `saw.account.enabled` and `saw.account.password` to create the matching
+OpenShell Keycloak account. Use a stable, unique password satisfying the
+OpenShell realm policy and provide it to that user through workshop user data.
+For new LB2142 tenants the catalog uses the same 12-character workshop
+password for the OpenShift console and OpenClaw. The LB2142 OpenShell realm
+sets its password policy to `length(12)` for this purpose.
+On retry, account provisioning verifies the existing password before assigning
+the `openshell-user` and `openshell-admin` roles; it does not reset an existing
+account. The admin role applies to any SAW gateway that trusts the shared realm;
+this grants participants platform administrator access beyond their own workspace.
+Vault seeding and account
+creation use sync Jobs, so failures make provisioning fail instead of leaving an
+unusable VM. The Jobs mount the Vault writer and Keycloak admin credentials only
+in their respective namespaces. Both the inference key and account password are
+in the tenant Argo Application's Helm values and Kubernetes Secrets: restrict
+access to the Application, `vault`, and `saw-keycloak` namespaces.
+
+The LB2142 catalog needs its companion cluster and tenant configuration changes
+as well as this repository's chart changes. Existing tenants require a resync
+after both changes are published; changing the catalog does not rerun a tenant's
+provisioning automatically.
+
 Add a `saw` entry to the tenant bootstrap values. User names must begin with a
 letter, be DNS labels, and be at most 19 characters; using `user-<guid>` also
 works when a GUID begins with a digit.

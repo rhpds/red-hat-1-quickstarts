@@ -41,6 +41,71 @@ def assert_pod_images_pinned(test, docs):
 
 
 class SawIntegrationTests(unittest.TestCase):
+    def test_account_job_assigns_dashboard_admin_role(self):
+        script = (ROOT / 'tenant/bootstrap/files/saw-create-user.py').read_text()
+        posted = []
+
+        class Response:
+            def __init__(self, body):
+                self.body = json.dumps(body).encode() if body is not None else b''
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return self.body
+
+        def urlopen(request, **kwargs):
+            url = request.full_url
+            if '/protocol/openid-connect/token' in url:
+                return Response({'access_token': 'test-token'})
+            if '/users?' in url:
+                return Response([{'id': 'user-id'}])
+            if '/roles/' in url:
+                return Response({'name': url.rsplit('/', 1)[-1]})
+            if url.endswith('/role-mappings/realm'):
+                posted.extend(json.loads(request.data))
+                return Response(None)
+            raise AssertionError(url)
+
+        with mock.patch.dict(os.environ, {'SAW_USER': 'user-7kzmd'}), \
+             mock.patch('pathlib.Path.read_text', return_value='test-password'), \
+             mock.patch('urllib.request.urlopen', side_effect=urlopen):
+            exec(script, {})
+        self.assertEqual({role['name'] for role in posted}, {'openshell-user', 'openshell-admin'})
+
+    def test_tenant_litellm_seed_and_workspace(self):
+        chart = ROOT / 'tenant/bootstrap'
+        saw = {'enabled': True, 'userName': 'user-7kzmd', 'clusterDomain': 'test.example',
+               'credentialProxyImage': PROXY, 'vmSource': {'dataSource': 'golden'},
+               'inferenceHost': 'model.example',
+               'account': {'enabled': True, 'password': 'SecureExample1!'},
+               'inferenceSeed': {'enabled': True, 'secretData': {'api_key': 'private-key',
+                   'url': 'https://model.example/v1', 'model': 'model-a'}}}
+        docs = render(chart, {'rag': None, 'tenant': {'name': '7kzmd'}, 'saw': saw})
+        job = next(d for d in docs if d['kind'] == 'Job' and d['metadata']['name'] == 'saw-user-7kzmd-inference-seed')
+        self.assertNotIn('private-key', yaml.safe_dump(job))
+        self.assertEqual(job['spec']['template']['spec']['containers'][0]['env'][0]['value'], 'hub/saw-user-7kzmd/inference')
+        source = next(d for d in docs if d['kind'] == 'Secret' and d['metadata']['name'] == 'saw-user-7kzmd-inference-input')
+        self.assertEqual(source['stringData']['provider'], 'custom-inference')
+        account_job = next(d for d in docs if d['kind'] == 'Job' and d['metadata']['name'] == 'saw-user-7kzmd-account')
+        self.assertNotIn('SecureExample1!', yaml.safe_dump(account_job))
+        users = next(d for d in docs if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-users-7kzmd')
+        apps = {d['metadata']['name']: d for d in child(users) if d['kind'] == 'Application'}
+        secrets = child(apps['saw-user-7kzmd-secrets'])
+        inference = next(d for d in secrets if d['kind'] == 'ExternalSecret' and d['metadata']['name'] == 'inference')
+        self.assertEqual(inference['spec']['dataFrom'][0]['extract']['key'], 'secret/data/hub/saw-user-7kzmd/inference')
+        self.assertFalse(any(d['metadata']['name'].startswith('web-search') for d in secrets if d['kind'] == 'ExternalSecret'))
+        vm_docs = child(apps['saw-user-7kzmd'])
+        self.assertTrue(any(d['kind'] == 'Route' and d['metadata']['name'] == 'user-7kzmd-default-notebook-ui' for d in vm_docs))
+        proxy = next(d for d in vm_docs if d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'user-7kzmd-credential-proxy-config')
+        policy = json.loads(proxy['data']['config.json'])
+        self.assertEqual(policy['profiles']['custom-inference'], ['model.example'])
+        self.assertTrue(any('custom-inference' in b['providers'] for b in policy['bindings']))
+        firewall = next(d for d in vm_docs if d['kind'] == 'EgressFirewall')
+        self.assertTrue(any(rule['type'] == 'Allow' and rule['to'].get('dnsName') == 'model.example'
+                            for rule in firewall['spec']['egress']))
+        saw['inferenceSeed']['secretData']['url'] = 'https://wrong.example/v1'
+        with self.assertRaises(subprocess.CalledProcessError):
+            render(chart, {'rag': None, 'tenant': {'name': '7kzmd'}, 'saw': saw})
+
     def test_cluster_ca_is_synced_from_vault(self):
         docs = render(ROOT / 'tenant/saw/charts/pattern-secrets', {'clusterCaSecret': 'saw-ingress-ca'})
         secret = next(d for d in docs if d['kind'] == 'ExternalSecret' and d['metadata']['name'] == 'saw-ingress-ca')
@@ -212,7 +277,7 @@ class SawAgnosticvTests(unittest.TestCase):
     def test_cluster_and_tenant_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
-            inputs = {'guid': '7kzmd', 'common_password': 'test-password', 'saw_enabled': True,
+            inputs = {'guid': '7kzmd', 'common_password': 'TestPass1234', 'saw_enabled': True, 'output_dir': str(tmp),
                       'saw_inference_seed_enabled': True, 'saw_inference_api_key': 'test-key',
                       'saw_inference_url': 'https://integrate.api.nvidia.com/v1', 'saw_inference_model': 'test-model',
                       'saw_inference_host': 'integrate.api.nvidia.com', 'openshift_cluster_ingress_domain': 'apps.test.example',
@@ -241,12 +306,19 @@ class SawAgnosticvTests(unittest.TestCase):
                     self.assertEqual(values['saw']['inferenceSeed']['secretData']['url'], 'https://integrate.api.nvidia.com/v1')
                     self.assertEqual(values['saw']['inferenceSeed']['secretData']['model'], 'test-model')
                     self.assertEqual(values['saw']['clusterDomain'], 'test.example')
-                    self.assertEqual(values['saw']['governance']['customInference']['host'], 'integrate.api.nvidia.com')
+                    self.assertEqual(values['saw']['governance']['customInference']['host'], 'model.example')
+                    self.assertEqual(values['saw']['keycloak']['values']['keycloak']['passwordPolicy'], 'length(12)')
+                    keycloak_app = next(d for d in docs if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-keycloak')
+                    realm = next(d for d in child(keycloak_app) if d['kind'] == 'KeycloakRealmImport')
+                    self.assertEqual(realm['spec']['realm']['passwordPolicy'], 'length(12)')
                     self.assertTrue(any(d['kind'] == 'Job' and d['metadata']['name'] == 'saw-inference-seed' for d in docs))
                 else:
                     self.assertEqual(values['saw']['userName'], 'user-7kzmd')
-                    self.assertEqual(values['saw']['inferenceHost'], 'integrate.api.nvidia.com')
-                    self.assertEqual(values['saw']['values']['defaults']['profiles'], ['data-science'])
+                    self.assertEqual(values['saw']['inferenceHost'], 'model.example')
+                    self.assertEqual(values['saw']['inferenceSeed']['secretData']['api_key'], 'test-key')
+                    self.assertEqual(values['saw']['inferenceSeed']['secretData']['url'], 'https://model.example/v1')
+                    self.assertTrue(values['saw']['account']['enabled'])
+                    self.assertEqual(values['saw']['account']['password'], inputs['common_password'])
                     users = next(d for d in docs if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-users-7kzmd')
                     workspace = next(d for d in child(users) if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-user-7kzmd')
                     routes = {d['metadata']['name']: d['spec'].get('host') for d in child(workspace) if d['kind'] == 'Route'}

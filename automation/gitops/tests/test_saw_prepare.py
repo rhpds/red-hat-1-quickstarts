@@ -244,7 +244,7 @@ class SawPrepareAgnosticvTests(unittest.TestCase):
         self.assertTrue(any(c['name'].endswith('#/automation/gitops/infra/ansible') and c['type'] == 'git' for c in config['requirements_content']['collections']))
         with tempfile.TemporaryDirectory() as temp:
             tmp = pathlib.Path(temp)
-            inputs = {'saw_enabled': True, 'guid': '7kzmd', 'common_password': 'test-password',
+            inputs = {'saw_enabled': True, 'guid': '7kzmd', 'common_password': 'TestPass1234', 'output_dir': str(tmp),
                       'openshift_cluster_ingress_domain': 'apps.test.example',
                       'litellm_api_endpoint': 'https://model.example', 'litellm_virtual_key': 'test-key',
                       'ai_quickstart_hugging_face_token': 'test-hf', 'ai_quickstart_tavily_search_key': 'test-tavily'}
