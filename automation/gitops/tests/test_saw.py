@@ -274,6 +274,31 @@ class SawRefreshTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get('AGNOSTICV_CLUSTER_CONFIG') and os.environ.get('AGNOSTICV_TENANT_CONFIG'), 'Set both agnosticv configuration paths')
 class SawAgnosticvTests(unittest.TestCase):
+    def test_cluster_inference_host_without_tenant_endpoint(self):
+        with tempfile.TemporaryDirectory() as temp:
+            tmp = Path(temp)
+            output, extra, play = (tmp / name for name in ('values.yaml', 'inputs.json', 'playbook.yaml'))
+            play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+                'vars_files': [os.environ['AGNOSTICV_CLUSTER_CONFIG']], 'tasks': [
+                    {'no_log': True, 'ansible.builtin.copy': {'dest': str(output), 'content': '{{ ocp4_workload_gitops_bootstrap_helm_values | to_nice_yaml }}'}}]}]))
+            env = os.environ.copy()
+            env.update({'ANSIBLE_LOCAL_TEMP': str(tmp / 'local'), 'ANSIBLE_REMOTE_TEMP': str(tmp / 'remote'), 'ANSIBLE_NOCOLOR': '1'})
+            base = {'saw_enabled': True, 'saw_keycloak_db_password': 'test-password',
+                    'openshift_cluster_ingress_domain': 'apps.test.example'}
+            for overrides, expected in [({'litellm_url': 'https://model.example/v1'}, 'model.example'),
+                                        ({'litellm_url': 'https://model.example/', 'saw_inference_host': 'override.example'}, 'override.example'),
+                                        ({}, '')]:
+                extra.write_text(json.dumps({**base, **overrides}))
+                subprocess.run(['ansible-playbook', '-i', 'localhost,', '-c', 'local', '-e', '@' + str(extra), str(play)],
+                               check=True, capture_output=True, text=True, env=env)
+                values = yaml.safe_load(output.read_text())
+                self.assertEqual(values['saw']['governance']['customInference']['host'], expected)
+                docs = render(ROOT / 'infra/bootstrap', values)
+                profiles = [d for d in docs if d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'governance-interceptor-extra-profiles']
+                self.assertEqual(bool(profiles), bool(expected))
+                if profiles:
+                    self.assertEqual(yaml.safe_load(profiles[0]['data']['custom-inference.yaml'])['endpoints'][0]['host'], expected)
+
     def test_cluster_and_tenant_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
