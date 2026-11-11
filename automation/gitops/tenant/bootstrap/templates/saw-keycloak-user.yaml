@@ -1,0 +1,52 @@
+{{- $saw := .Values.saw | default dict -}}
+{{- $account := $saw.account | default dict -}}
+{{- if and (or (not (hasKey $saw "enabled")) (eq (lower (toString $saw.enabled)) "true")) (eq (lower (toString $account.enabled)) "true") }}
+{{- $name := required "saw.userName is required" $saw.userName -}}
+{{- $password := required "saw.account.password is required" $account.password -}}
+{{- if lt (len $password) 12 }}
+{{- fail "saw.account.password must be at least 12 characters" }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ printf "saw-%s-account" $name | quote }}
+  namespace: saw-keycloak
+type: Opaque
+stringData:
+  password: {{ $password | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "saw-%s-account" $name | quote }}
+  namespace: saw-keycloak
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: account
+          image: registry.access.redhat.com/ubi9/python-311@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          env:
+            - {name: SAW_USER, value: {{ $name | quote }}}
+          command: [python, -c]
+          args:
+            - |
+{{ .Files.Get "files/saw-create-user.py" | indent 14 }}
+          volumeMounts:
+            - {name: input, mountPath: /input, readOnly: true}
+            - {name: admin, mountPath: /admin, readOnly: true}
+      volumes:
+        - name: input
+          secret: {secretName: {{ printf "saw-%s-account" $name | quote }}}
+        - name: admin
+          secret: {secretName: openshell-keycloak-initial-admin}
+{{- end }}
