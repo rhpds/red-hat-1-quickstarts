@@ -48,6 +48,6 @@ if not created:
             pass
     except HTTPError:
         raise SystemExit('Existing account password could not be verified; refusing to reset it') from None
-role = api('/roles/openshell-user')
-api('/users/' + user_id + '/role-mappings/realm', 'POST', [role])
+roles = [api('/roles/' + name) for name in ('openshell-user', 'openshell-admin')]
+api('/users/' + user_id + '/role-mappings/realm', 'POST', roles)
 print('Workshop OpenShell account ready')

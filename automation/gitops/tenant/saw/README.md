@@ -178,7 +178,10 @@ For new LB2142 tenants the catalog uses the same 12-character workshop
 password for the OpenShift console and OpenClaw. The LB2142 OpenShell realm
 sets its password policy to `length(12)` for this purpose.
 On retry, account provisioning verifies the existing password before assigning
-the user role; it does not reset an existing account. Vault seeding and account
+the `openshell-user` and `openshell-admin` roles; it does not reset an existing
+account. The admin role applies to any SAW gateway that trusts the shared realm;
+this grants participants platform administrator access beyond their own workspace.
+Vault seeding and account
 creation use sync Jobs, so failures make provisioning fail instead of leaving an
 unusable VM. The Jobs mount the Vault writer and Keycloak admin credentials only
 in their respective namespaces. Both the inference key and account password are

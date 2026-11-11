@@ -41,6 +41,36 @@ def assert_pod_images_pinned(test, docs):
 
 
 class SawIntegrationTests(unittest.TestCase):
+    def test_account_job_assigns_dashboard_admin_role(self):
+        script = (ROOT / 'tenant/bootstrap/files/saw-create-user.py').read_text()
+        posted = []
+
+        class Response:
+            def __init__(self, body):
+                self.body = json.dumps(body).encode() if body is not None else b''
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return self.body
+
+        def urlopen(request, **kwargs):
+            url = request.full_url
+            if '/protocol/openid-connect/token' in url:
+                return Response({'access_token': 'test-token'})
+            if '/users?' in url:
+                return Response([{'id': 'user-id'}])
+            if '/roles/' in url:
+                return Response({'name': url.rsplit('/', 1)[-1]})
+            if url.endswith('/role-mappings/realm'):
+                posted.extend(json.loads(request.data))
+                return Response(None)
+            raise AssertionError(url)
+
+        with mock.patch.dict(os.environ, {'SAW_USER': 'user-7kzmd'}), \
+             mock.patch('pathlib.Path.read_text', return_value='test-password'), \
+             mock.patch('urllib.request.urlopen', side_effect=urlopen):
+            exec(script, {})
+        self.assertEqual({role['name'] for role in posted}, {'openshell-user', 'openshell-admin'})
+
     def test_tenant_litellm_seed_and_workspace(self):
         chart = ROOT / 'tenant/bootstrap'
         saw = {'enabled': True, 'userName': 'user-7kzmd', 'clusterDomain': 'test.example',
