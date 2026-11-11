@@ -189,15 +189,28 @@
     msg: "SAW golden image ready: docker://image-registry.openshift-image-registry.svc:5000/{{ saw_prepare_namespace }}/{{ saw_prepare_mirror_repository }}@{{ _saw_digest }}"
 
 - name: Wait for the infrastructure bootstrap to become ready
-  kubernetes.core.k8s_info:
-    api_version: argoproj.io/v1alpha1
-    kind: Application
-    namespace: "{{ ocp4_workload_gitops_bootstrap_namespace | default('openshift-gitops') }}"
-    name: "{{ ocp4_workload_gitops_bootstrap_application_name | default('lb2142-ai-quickstarts') }}"
-  register: _saw_bootstrap
-  retries: "{{ saw_prepare_retries }}"
-  delay: "{{ saw_prepare_delay }}"
-  until: >-
-    _saw_bootstrap.resources | length > 0 and
-    (_saw_bootstrap.resources[0].status.health.status | default('') == 'Healthy') and
-    (_saw_bootstrap.resources[0].status.sync.status | default('') == 'Synced')
+  block:
+    - name: Check bootstrap health and completed sync
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: "{{ ocp4_workload_gitops_bootstrap_namespace | default('openshift-gitops') }}"
+        name: "{{ ocp4_workload_gitops_bootstrap_application_name | default('lb2142-ai-quickstarts') }}"
+      register: _saw_bootstrap
+      retries: "{{ saw_prepare_retries }}"
+      delay: "{{ saw_prepare_delay }}"
+      # Operator-managed resources can drift after a successful sync.
+      until: >-
+        _saw_bootstrap.resources | default([]) | length > 0 and
+        (_saw_bootstrap.resources[0].status.health.status | default('') == 'Healthy') and
+        (_saw_bootstrap.resources[0].status.operationState.phase | default('') == 'Succeeded')
+  rescue:
+    - name: Report bootstrap readiness failure
+      ansible.builtin.fail:
+        msg: >-
+          Bootstrap Application {{ ocp4_workload_gitops_bootstrap_application_name | default('lb2142-ai-quickstarts') }}
+          in {{ ocp4_workload_gitops_bootstrap_namespace | default('openshift-gitops') }} is not ready.
+          health={{ _saw_bootstrap.resources[0].status.health.status | default('unknown') }},
+          sync={{ _saw_bootstrap.resources[0].status.sync.status | default('unknown') }},
+          operation={{ _saw_bootstrap.resources[0].status.operationState.phase | default('unknown') }}.
+          API error={{ ansible_failed_result.msg | default('none') }}

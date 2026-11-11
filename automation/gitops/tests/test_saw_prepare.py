@@ -155,7 +155,7 @@ if info:
     if kind == 'ConfigMap': resources = [{'data': {'ca-bundle.crt': 'test-ca'}}]
     elif kind == 'Secret': resources = [{'data': {'token': 'fake'}}]
     elif kind == 'Job': resources = [{'status': {'succeeded': 1}}]
-    elif kind == 'Application': resources = [{'status': {'health': {'status': 'Healthy'}, 'sync': {'status': 'Synced'}}}]
+    elif kind == 'Application': resources = [{'status': {'health': {'status': 'Healthy'}, 'sync': {'status': 'OutOfSync'}, 'operationState': {'phase': 'Succeeded'}}}]
     elif kind == 'ImageStreamTag': resources = [{'image': {'metadata': {'name': digest}}}] if os.path.exists(os.environ['SAW_TEST_MIRRORED']) or os.environ.get('SAW_TEST_EXISTS') == '1' else []
     else: resources = [{}]
     module.exit_json(changed=False, resources=resources)
@@ -189,6 +189,47 @@ module.exit_json(changed=True)
             result = subprocess.run(['ansible-playbook', '-i', 'localhost,', '-e', '{"saw_enabled": false}', str(play)], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual((tmp / 'events').read_text(), '')
+
+    def test_bootstrap_readiness_requires_health_and_successful_operation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            tmp = pathlib.Path(temp)
+            plugins = tmp / 'collections/ansible_collections/kubernetes/core/plugins/modules'
+            plugins.mkdir(parents=True)
+            (plugins / 'k8s_info.py').write_text('''#!/usr/bin/python
+from ansible.module_utils.basic import AnsibleModule
+import json, os
+module = AnsibleModule(argument_spec=dict(api_version=dict(), kind=dict(), namespace=dict(), name=dict()))
+if os.environ.get('SAW_TEST_API_ERROR'):
+    module.fail_json(msg='API unavailable')
+module.exit_json(changed=False, resources=json.loads(os.environ['SAW_TEST_RESOURCES']))
+''')
+            task = yaml.safe_load((ROLE / 'tasks/provision.yml').read_text())[-1]
+            play = tmp / 'playbook.yaml'
+            play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+                'vars': {'saw_prepare_retries': 1, 'saw_prepare_delay': 0}, 'tasks': [task]}]))
+            env = os.environ.copy()
+            env.update({'ANSIBLE_LOCAL_TEMP': str(tmp / 'local'), 'ANSIBLE_REMOTE_TEMP': str(tmp / 'remote'),
+                        'ANSIBLE_COLLECTIONS_PATH': str(tmp / 'collections'), 'ANSIBLE_NOCOLOR': '1'})
+            for health, sync, operation, succeeds in [
+                ('Healthy', 'OutOfSync', 'Succeeded', True),
+                ('Progressing', 'Synced', 'Succeeded', False),
+                ('Healthy', 'Synced', 'Running', False),
+                ('Healthy', 'Synced', None, False),
+                (None, None, None, False),
+            ]:
+                status = {} if health is None else {'health': {'status': health}, 'sync': {'status': sync}}
+                if operation is not None:
+                    status['operationState'] = {'phase': operation}
+                env['SAW_TEST_RESOURCES'] = json.dumps([] if health is None else [{'status': status}])
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, succeeds, result.stdout + result.stderr)
+                if not succeeds:
+                    self.assertIn('Bootstrap Application lb2142-ai-quickstarts', result.stdout)
+                    self.assertIn('operation=', result.stdout)
+            env['SAW_TEST_API_ERROR'] = '1'
+            result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)], env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('API unavailable', result.stdout)
 
 
 
