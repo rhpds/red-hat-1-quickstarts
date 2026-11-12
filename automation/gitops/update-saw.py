@@ -68,27 +68,27 @@ def update(source, ref, destination):
             "    # Append to HCO's generated gates; do not replace its existing feature list.\n"
             '    kubevirt.kubevirt.io/jsonpatch: >-\n'
             '      [{"op":"add","path":"/spec/configuration/developerConfiguration/featureGates/-","value":"EnableVirtioFsConfigVolumes"}]'))
-        # Keep reviewed compatibility fixes and local additions on refresh.
+        # Keep reviewed compatibility fixes on refresh.
         integration = Path(__file__).resolve().parent
         for patch in json.loads((integration / 'saw-patches.json').read_text()):
             file = stage / patch['file']
-            if 'source' in patch:
-                # Local additions live outside the replaced vendor tree. Refuse
-                # to overwrite a different implementation introduced upstream.
-                addition = integration / patch['source']
-                if file.exists():
-                    if file.read_bytes() != addition.read_bytes():
-                        raise ValueError(f"Upstream {patch['file']} now exists; review the local addition")
-                else:
-                    file.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(addition, file)
-                continue
             text = file.read_text()
             if patch['new'] in text:
                 continue
             if text.count(patch['old']) != 1:
                 raise ValueError(f"Upstream {patch['file']} changed; review the local compatibility patch")
             file.write_text(text.replace(patch['old'], patch['new']))
+        # Preserve the local harness/profile directory as a unit. An upstream
+        # implementation at the same path needs review before replacement.
+        additions = integration / 'tenant/saw-additions'
+        for addition in sorted(additions.rglob('*')):
+            if not addition.is_file():
+                continue
+            file = stage / addition.relative_to(additions)
+            if file.exists() and file.read_bytes() != addition.read_bytes():
+                raise ValueError(f"Upstream {file.relative_to(stage)} now exists; review the local addition")
+            file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(addition, file)
         for file in stage.rglob('*.yaml'):
             text = file.read_text()
             for image, digest in PINS.items():

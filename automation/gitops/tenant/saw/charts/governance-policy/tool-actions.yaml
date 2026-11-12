@@ -63,16 +63,16 @@ rules:
     tool: briefing-writer__save_briefing
     action: allow
   - id: saw-demo-email
-    tool: demo-assistant__saw_read_email
+    tool: mailpit-reader__saw_read_email
     action: allow
   - id: saw-demo-chat
-    tool: demo-assistant__saw_read_chat
+    tool: mattermost-reader__saw_read_chat
     action: allow
   - id: saw-demo-calendar
-    tool: demo-assistant__saw_read_calendar
+    tool: calendar-reader__saw_read_calendar
     action: allow
   - id: saw-demo-report
-    tool: demo-assistant__saw_save_report
+    tool: demo-notes__saw_save_report
     action: allow
   - id: read
     tool: read

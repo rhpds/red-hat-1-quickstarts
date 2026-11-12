@@ -1082,13 +1082,9 @@ def describe_harness_tree(files, inline=False):
                         "or ship the bundle as an image")
                 # A stdio server runs inside the sandbox, under its policy. It
                 # needs a governanceProfile only when it calls a service.
-                profiles = (declared.get(server) or {}).get("governanceProfiles", [])
-                if not isinstance(profiles, list) or any(not isinstance(p, str) or not p for p in profiles):
-                    raise InstallerError(f"harness '{name}': governanceProfiles must be a list of profile names")
-                profiles = list(dict.fromkeys(([profile] if profile else []) + profiles))
-                if profiles:
-                    governance.extend({"kind": "MCP server", "name": server,
-                                       "governanceProfile": p, "hosts": []} for p in profiles)
+                if profile:
+                    governance.append({"kind": "MCP server", "name": server,
+                                       "governanceProfile": profile, "hosts": []})
                 else:
                     log(f"WARN: harness '{name}': stdio MCP server '{server}' has no "
                         "governanceProfile; its egress, if any, is enforced at runtime by "
@@ -1109,11 +1105,7 @@ def describe_harness_tree(files, inline=False):
             bundle_id = json.loads(files["plugin.json"][0].decode("utf-8")).get("name") or name
         except (ValueError, AttributeError):
             pass
-    tools = spec.get("toolAllowlist", [])
-    if not isinstance(tools, list) or any(not isinstance(t, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", t) for t in tools):
-        raise InstallerError(f"harness '{name}': toolAllowlist must contain exact tool names")
     return {
-        "toolAllowlist": tools,
         "name": name,
         "bundleId": bundle_id,
         "agent": spec.get("agent", "openclaw"),
@@ -3116,8 +3108,8 @@ def ws_args(name):
     return [] if name == "default" else ["--workspace", name]
 
 
-# Configure channels and the harness's optional tool scope before any OpenClaw
-# CLI call: a provider token can otherwise trigger automatic channel installation.
+# Disable provider channels before OpenClaw CLI calls can auto-install them.
+# Restore tool settings left by the older demo harness during migration.
 _OPENCLAW_PREFLIGHT = """\
 const fs = require("node:fs");
 const root = "/sandbox/.openclaw";
@@ -3144,12 +3136,7 @@ if (fs.existsSync(legacy)) {
   state ??= {before: JSON.parse(fs.readFileSync(legacy, "utf8")), managed: cfg.tools?.allow};
 }
 fs.mkdirSync(root, {recursive: true});
-if (desired.tools.length) {
-  state ??= {before: cfg.tools || {}};
-  state.managed = desired.tools;
-  fs.writeFileSync(saved, JSON.stringify(state), {mode: 0o600});
-  cfg.tools = {...cfg.tools, allow: desired.tools, toolSearch: false};
-} else if (state) {
+if (state) {
   cfg.tools ??= {};
   for (const [key, managed] of [["allow", state.managed], ["toolSearch", false]]) {
     if (JSON.stringify(cfg.tools[key]) === JSON.stringify(managed)) {
@@ -4774,11 +4761,9 @@ class ProfileApplier:
         self.install_keepalive(ws, sb)
 
     def disable_provider_channels(self, ws, sb, exec_cmd, oc_env):
-        """Keep provider channels off and apply the mounted harness's tool scope."""
+        """Keep provider channels off; restore settings from the old demo harness."""
         types = {p.type for p in ws.providers if p.name in sb.providers}
-        info = self.harness_info.get((ws.name, sb.name)) or {}
-        settings = {"channels": sorted(types & OPENCLAW_CHAT_CHANNELS),
-                    "tools": info.get("toolAllowlist", [])}
+        settings = {"channels": sorted(types & OPENCLAW_CHAT_CHANNELS)}
         self.cli(*exec_cmd, "node", "-e", _OPENCLAW_PREFLIGHT, json.dumps(settings))
 
     def configure_harness(self, ws, sb, exec_cmd, oc_env):

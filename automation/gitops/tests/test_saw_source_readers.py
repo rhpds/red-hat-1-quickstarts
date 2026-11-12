@@ -22,7 +22,7 @@ class SourceReaderInstallerTests(unittest.TestCase):
     def bundle(self):
         values = {'profiles': ['demo-assistant'], 'harnessEnabled': True,
                   'demoAssistant': {'enabled': True, 'clusterDomain': 'test.example',
-                                    'demoId': 'user-test', 'tenantUser': 'user-test'}}
+                                    'demoId': 'rh1'}}
         output = subprocess.check_output(['helm', 'template', 'test', str(ROOT / 'tenant/saw/charts/saw-bom'),
                                           '-f', '-'], input=yaml.safe_dump(values), text=True)
         data = yaml.safe_load(output)['data']
@@ -39,7 +39,7 @@ class SourceReaderInstallerTests(unittest.TestCase):
     def test_harness_checks_all_three_governed_sources(self):
         tree = self.bundle()
         info = installer.describe_harness_tree(tree, inline=True)
-        self.assertEqual(info['mcpServers'], ['demo-assistant'])
+        self.assertEqual(set(info['mcpServers']), {'mailpit-reader', 'mattermost-reader', 'calendar-reader', 'demo-notes'})
         self.assertEqual({g['governanceProfile'] for g in info['governance']},
                          {'mailpit', 'mattermost', 'calendar'})
         self.assertEqual(tree['mcp/briefing-lib.mjs'][0],
@@ -68,55 +68,19 @@ class SourceReaderInstallerTests(unittest.TestCase):
                 {'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18'}},
                 {'id': 2, 'method': 'tools/list'},
                 {'id': 3, 'method': 'tools/call', 'params': {'name': 'saw_read_email', 'arguments': {'url': 'https://other.invalid'}}},
-                {'id': 4, 'method': 'tools/call', 'params': {'name': 'saw_read_email', 'arguments': {}}},
+                {'id': 4, 'method': 'tools/call', 'params': {'name': 'saw_read_chat', 'arguments': {}}},
             ]
-            result = subprocess.run(['node', str(root / 'mcp/source-readers.mjs')],
+            result = subprocess.run(['node', str(root / 'mcp/source-readers.mjs'), 'mailpit-reader'],
                                     input='\n'.join(json.dumps(r) for r in requests) + '\n',
                                     env={'PATH': os.environ['PATH']}, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             replies = {r['id']: r for r in map(json.loads, result.stdout.splitlines())}
-            self.assertEqual(replies[1]['result']['serverInfo']['name'], 'demo-assistant')
+            self.assertEqual(replies[1]['result']['serverInfo']['name'], 'mailpit-reader')
             self.assertEqual({t['name'] for t in replies[2]['result']['tools']},
-                             {'saw_read_email', 'saw_read_chat', 'saw_read_calendar', 'saw_save_report', 'saw_upload_summary'})
+                             {'saw_read_email'})
             self.assertTrue(replies[3]['result']['isError'])
             self.assertIn('accept no arguments', replies[3]['result']['content'][0]['text'])
-            self.assertTrue(replies[4]['result']['isError'])
-            self.assertIn('placeholder is unavailable', replies[4]['result']['content'][0]['text'])
-
-    def test_shared_preflight_migrates_old_plugin_and_restores_previous_tool_scope(self):
-        info = installer.describe_harness_tree(self.bundle(), inline=True)
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / '.openclaw'
-            root.mkdir()
-            config = root / 'openclaw.json'
-            before = {'profile': 'full', 'allow': ['read']}
-            old = ['saw_read_email', 'saw_read_chat', 'saw_read_calendar', 'saw_save_report', 'saw_upload_summary']
-            config.write_text(json.dumps({'tools': {'profile': 'full', 'allow': old, 'toolSearch': False},
-                'plugins': {'load': {'paths': [directory + '/.saw/trusted/source-readers']},
-                            'entries': {'saw-source-readers': {'enabled': True}, 'saw-tool-gate': {'enabled': True}},
-                            'allow': ['saw-source-readers', 'saw-tool-gate']}}))
-            (root / 'saw-source-tools-before.json').write_text(json.dumps(before))
-            script = installer._OPENCLAW_PREFLIGHT.replace('/sandbox', directory)
-            def apply(tools):
-                subprocess.run(['node', '-e', script, json.dumps({'channels': ['mattermost'], 'tools': tools})],
-                               check=True, capture_output=True)
-                return json.loads(config.read_text())
-            for _ in range(2):
-                after = apply(info['toolAllowlist'])
-                self.assertEqual(after['tools']['allow'], info['toolAllowlist'])
-                self.assertNotIn('saw-source-readers', after['plugins']['entries'])
-                self.assertNotIn('saw-source-readers', after['plugins']['allow'])
-                self.assertEqual(after['plugins']['load']['paths'], [])
-                self.assertTrue(after['plugins']['entries']['saw-tool-gate']['enabled'])
-                self.assertFalse(after['channels']['mattermost']['enabled'])
-            self.assertEqual(apply([])['tools'], before)
-            self.assertFalse((root / 'saw-source-tools-before.json').exists())
-            # Disabling a harness must preserve a later operator change.
-            apply(info['toolAllowlist'])
-            cfg = json.loads(config.read_text())
-            cfg['tools']['allow'] = ['operator-tool']
-            config.write_text(json.dumps(cfg))
-            self.assertEqual(apply([])['tools']['allow'], ['operator-tool'])
+            self.assertIn('unknown tool', replies[4]['error']['message'])
 
     def test_gate_bundle_contains_only_enforcement_assets(self):
         applier = installer.ProfileApplier.__new__(installer.ProfileApplier)
@@ -127,17 +91,25 @@ class SourceReaderInstallerTests(unittest.TestCase):
         self.assertEqual((PATH.parent / 'tool-actions.yaml').read_bytes(),
                          (ROOT / 'tenant/saw/charts/governance-policy/tool-actions.yaml').read_bytes())
 
-    def test_harness_tool_scope_is_applied_after_openclaw_configuration(self):
-        info = installer.describe_harness_tree(self.bundle(), inline=True)
-        applier = installer.ProfileApplier.__new__(installer.ProfileApplier)
-        applier.harness_info = {('default', 'notebook'): info}
-        calls = []
-        applier.cli = lambda *args, **kwargs: calls.append(args)
-        applier.configure_harness_mcp = lambda *args: calls.append(('mcp-configured',))
-        applier.configure_harness(installer.Workspace(name='default'),
-                                  installer.Sandbox(name='notebook', type='openclaw'), (), 'openclaw-env')
-        self.assertEqual(calls[-1][:2], ('node', '-e'))
-        self.assertEqual(json.loads(calls[-1][-1])['tools'], info['toolAllowlist'])
+    def test_apply_restores_old_demo_tool_scope_without_overwriting_operator_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / '.openclaw'
+            root.mkdir()
+            config = root / 'openclaw.json'
+            managed = ['demo-assistant__saw_read_email']
+            before = {'profile': 'full', 'allow': ['read']}
+            def migrate(allow):
+                config.write_text(json.dumps({'tools': {'profile': 'full', 'allow': allow, 'toolSearch': False},
+                    'plugins': {'entries': {'saw-tool-gate': {'enabled': True}}}}))
+                (root / 'saw-harness-tools-before.json').write_text(json.dumps({'before': before, 'managed': managed}))
+                subprocess.run(['node', '-e', installer._OPENCLAW_PREFLIGHT.replace('/sandbox', directory),
+                                json.dumps({'channels': ['mattermost']})], check=True, capture_output=True)
+                return json.loads(config.read_text())
+            restored = migrate(managed)
+            self.assertEqual(restored['tools'], before)
+            self.assertFalse(restored['channels']['mattermost']['enabled'])
+            self.assertTrue(restored['plugins']['entries']['saw-tool-gate']['enabled'])
+            self.assertEqual(migrate(['operator-tool'])['tools']['allow'], ['operator-tool'])
 
 
 if __name__ == '__main__':

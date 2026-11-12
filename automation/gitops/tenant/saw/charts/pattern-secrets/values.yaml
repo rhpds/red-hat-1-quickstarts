@@ -23,3 +23,6 @@ clusterCaSecret: ""
 # Optional Secret for a VM to pull images from a private registry. The token
 # comes from the shared <sshVaultPrefix>/registry-pull Vault entry.
 registryPullSecret: ""
+
+# Optional per-provider prefix; other credentials keep their existing private path.
+providerVaultPrefixes: {}

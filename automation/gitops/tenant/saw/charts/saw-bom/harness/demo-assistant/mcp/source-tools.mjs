@@ -12,28 +12,15 @@ async function read(url, { headers = {}, format = "json" } = {}) {
 }
 
 export function createSourceTools(config, dependencies = {}) {
-  const { clusterDomain, demoId, tenantUser } = config;
+  const { clusterDomain, demoId } = config;
   if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(clusterDomain || "") ||
-      !/^[a-z0-9][a-z0-9-]{0,30}$/.test(demoId || "") ||
-      (!/^[a-z][a-z0-9-]{0,18}$/.test(tenantUser || "") || demoId !== tenantUser)) {
+      !/^[a-z][a-z0-9-]{0,19}$/.test(demoId || "")) {
     throw new Error("Invalid source-reader configuration");
   }
-  const fetchSource = dependencies.read || read;
-  let pendingRead = Promise.resolve();
-  // Keycloak's brute-force protection rejects overlapping logins for one user.
-  const get = (...args) => {
-    const request = pendingRead.then(() => fetchSource(...args));
-    pendingRead = request.catch(() => {});
-    return request;
-  };
+  const get = dependencies.read || read;
   const env = dependencies.env || process.env;
   const base = name => `https://${name}-ui-openshell-agents.apps.${clusterDomain}`;
   const prefix = `[SAW:${demoId}] `;
-  const sourceHeaders = name => {
-    const placeholder = env[name];
-    if (!placeholder) throw new Error("Source provider placeholder is unavailable");
-    return { Authorization: placeholder };
-  };
   const tool = (name, description, run, acceptsContent = false) => ({
     name, description,
     inputSchema: { type: "object", properties: acceptsContent ? {
@@ -55,15 +42,14 @@ export function createSourceTools(config, dependencies = {}) {
   return [
     tool("saw_read_email", "Read the assigned demo email list and message bodies", async () => {
       const messages = [];
-      const headers = sourceHeaders("MAILPIT_AUTHORIZATION");
       let start = 0;
       for (let page = 0; page < 20; page++) {
-        const batch = await get(`${base("mailpit")}/api/v1/messages?start=${start}&limit=100`, { headers });
+        const batch = await get(`${base("mailpit")}/api/v1/messages?start=${start}&limit=100`);
         if (!Array.isArray(batch.messages) || !Number.isInteger(batch.total)) throw new Error("Invalid Mailpit response");
         for (const item of batch.messages.filter(m => typeof m.Subject === "string" && m.Subject.startsWith(prefix))) {
           if (messages.length >= 50) throw new Error("More than 50 assigned emails; narrow the operator's fixture set");
           const url = `${base("mailpit")}/api/v1/message/${encodeURIComponent(item.ID)}`;
-          const message = await get(url, { headers });
+          const message = await get(url);
           if (typeof message.Subject !== "string" || !message.Subject.startsWith(prefix)) throw new Error("Mailpit message scope changed");
           messages.push({ id: item.ID, subject: message.Subject, from: message.From, received: message.Date,
             body: String(message.Text || "").slice(0, 10000), url });
@@ -79,8 +65,8 @@ export function createSourceTools(config, dependencies = {}) {
       if (!placeholder) throw new Error("Mattermost provider placeholder is unavailable");
       const headers = { Authorization: `Bearer ${placeholder}` };
       const teams = await get(`${base("mattermost")}/api/v4/users/me/teams`, { headers });
-      const team = Array.isArray(teams) && teams.find(t => t.name === tenantUser && t.type === "I");
-      if (!team) throw new Error("Mattermost assigned private team is unavailable");
+      const team = Array.isArray(teams) && teams.find(t => t.name === `saw-${demoId}`);
+      if (!team) throw new Error("Mattermost demo team is unavailable");
       const channel = await get(`${base("mattermost")}/api/v4/teams/${encodeURIComponent(team.id)}/channels/name/ai-platform`, { headers });
       if (!/^[a-z0-9]{26}$/.test(channel?.id || "")) throw new Error("Invalid assigned channel");
       const assignedChannel = channel.id;
@@ -94,8 +80,8 @@ export function createSourceTools(config, dependencies = {}) {
       }) };
     }),
     tool("saw_read_calendar", "Read the assigned demo calendar events and their UTC timestamps", async () => {
-      const url = `${base("radicale")}/${tenantUser}/${demoId}/`;
-      const calendar = await get(url, { format: "text", headers: sourceHeaders("CALENDAR_AUTHORIZATION") });
+      const url = `${base("radicale")}/demo/${demoId}/`;
+      const calendar = await get(url, { format: "text" });
       if (typeof calendar !== "string" || !calendar.includes("BEGIN:VCALENDAR") || calendar.length > 100000) {
         throw new Error("Invalid or oversized calendar response");
       }

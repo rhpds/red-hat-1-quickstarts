@@ -307,14 +307,20 @@ class SawRefreshTests(unittest.TestCase):
                 else:
                     self.assertEqual((destination / patch['file']).read_bytes(), (ROOT / 'tenant/saw' / patch['file']).read_bytes())
 
+            for addition in (ROOT / 'tenant/saw-additions').rglob('*'):
+                if addition.is_file():
+                    relative = addition.relative_to(ROOT / 'tenant/saw-additions')
+                    self.assertEqual((destination / relative).read_bytes(), addition.read_bytes())
+                    self.assertEqual((ROOT / 'tenant/saw' / relative).read_bytes(), addition.read_bytes())
+
             self.assertIn('EnableVirtioFsConfigVolumes', (destination / 'charts/openshift-cnv/templates/hyperconverged.yaml').read_text())
             updater.update(source, 'HEAD', destination)
             self.assertEqual(snapshot(), before)
 
             # An incompatible upstream addition must leave the existing vendor
             # tree intact, even after other patches have been staged.
-            addition = next(p for p in json.loads((ROOT / 'saw-patches.json').read_text()) if 'source' in p)
-            collision = source / addition['file']
+            addition = next(p for p in (ROOT / 'tenant/saw-additions').rglob('*') if p.is_file())
+            collision = source / addition.relative_to(ROOT / 'tenant/saw-additions')
             collision.parent.mkdir(parents=True, exist_ok=True)
             collision.write_text('different upstream implementation\n')
             subprocess.run(['git', '-C', str(source), 'add', '-A'], check=True)

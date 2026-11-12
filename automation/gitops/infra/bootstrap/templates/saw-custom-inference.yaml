@@ -31,14 +31,6 @@ data:
 {{- range $name := $names }}
   {{ $name }}.yaml: |
 {{- $profile := $.Files.Get (printf "files/demo/%s.yaml" $name) | replace "CLUSTER_DOMAIN" (required "saw.clusterDomain is required for demo HTTPS endpoints" $.Values.saw.clusterDomain) | fromYaml }}
-{{- if and (eq (lower (toString $demo.provisioningEnabled)) "true") (ne $name "mattermost") }}
-{{- $env := ternary "MAILPIT_AUTHORIZATION" "CALENDAR_AUTHORIZATION" (eq $name "mailpit") }}
-{{- $_ := set $profile "credentials" (list (dict "name" "api_token" "env_vars" (list $env) "required" true "auth_style" "header" "header_name" "authorization")) }}
-{{- $_ := set $profile "discovery" (dict "credentials" (list "api_token")) }}
-{{- $endpoint := last $profile.endpoints }}
-{{- $_ := set $endpoint "access" "read-only" }}
-{{- $_ := set $profile "endpoints" (list $endpoint) }}
-{{- end }}
 {{ toYaml $profile | indent 4 }}
 {{- end }}
 {{- end }}

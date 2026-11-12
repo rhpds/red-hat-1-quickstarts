@@ -8,16 +8,11 @@ category: messaging
 # Mailpit is auth-free, so no credentials key is declared (same as
 # web-search.yaml); see docs/custom-inference.md.
 endpoints:
-  - host: mailpit.openshell-agents.svc.cluster.local
-    port: 1025
-    protocol: rest
-    enforcement: enforce
-    access: read-write
   - host: mailpit-ui-openshell-agents.apps.CLUSTER_DOMAIN
     port: 443
     protocol: rest
     enforcement: enforce
-    access: read-write
+    access: read-only
 binaries:
   - /usr/bin/curl
   - /usr/local/bin/curl

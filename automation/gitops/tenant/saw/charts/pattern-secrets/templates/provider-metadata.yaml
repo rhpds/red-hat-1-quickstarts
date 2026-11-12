@@ -22,6 +22,6 @@ spec:
         {{- end }}
   dataFrom:
     - extract:
-        key: {{ printf "%s/%s" $.Values.vaultPrefix $name | quote }}
+        key: {{ printf "%s/%s" ((index ($.Values.providerVaultPrefixes | default dict) $name) | default $.Values.vaultPrefix) $name | quote }}
 {{- end }}
 {{- end }}

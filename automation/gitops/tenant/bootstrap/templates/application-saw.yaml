@@ -54,7 +54,7 @@
 {{- if $provision -}}
 {{- $_ := set $values.defaults "profiles" (list "demo-assistant") -}}
 {{- $_ := set (index $values.users 0) "vaultPrefix" (printf "secret/data/hub/saw-%s" $name) -}}
-{{- $_ := set $values.defaults.openshellSaw "sourceReaders" (dict "enabled" true "demoId" $name "tenantUser" $name) -}}
+{{- $_ := set $values.defaults.openshellSaw "sourceReaders" (dict "enabled" true "demoId" "rh1") -}}
 {{- end -}}
 {{- end -}}
 ---

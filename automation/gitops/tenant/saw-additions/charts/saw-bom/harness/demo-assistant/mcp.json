@@ -1,17 +1,40 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
-    "demo-assistant": {
+    "mailpit-reader": {
       "type": "stdio",
       "command": "node",
       "args": [
-        "${PLUGIN_ROOT}/mcp/source-readers.mjs"
+        "${PLUGIN_ROOT}/mcp/source-readers.mjs",
+        "mailpit-reader"
+      ]
+    },
+    "mattermost-reader": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/mcp/source-readers.mjs",
+        "mattermost-reader"
       ],
       "env": {
-        "MM_TOKEN": "${MM_TOKEN}",
-        "MAILPIT_AUTHORIZATION": "${MAILPIT_AUTHORIZATION}",
-        "CALENDAR_AUTHORIZATION": "${CALENDAR_AUTHORIZATION}"
+        "MM_TOKEN": "${MM_TOKEN}"
       }
+    },
+    "calendar-reader": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/mcp/source-readers.mjs",
+        "calendar-reader"
+      ]
+    },
+    "demo-notes": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/mcp/source-readers.mjs",
+        "demo-notes"
+      ]
     }
   }
 }

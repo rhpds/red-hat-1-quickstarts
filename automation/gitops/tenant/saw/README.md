@@ -244,10 +244,11 @@ the OpenShell password policy.
 `update-saw.py` reapplies the reviewed compatibility changes listed in
 `saw-patches.json`. It fails when an upstream edit no longer matches the expected
 patch location so the next vendor refresh cannot silently drop these fixes.
-The same manifest lists added files with a `source` path under
-`automation/gitops/tenant/saw-additions/`, outside the replaced vendor tree. Edit those
-source files and refresh to update their vendored copies. A different upstream
-file at an addition's destination stops the refresh for review. Existing files
+Local additions live under
+`automation/gitops/tenant/saw-additions/`, outside the replaced vendor tree.
+The refresh copies this directory as a unit and refuses to overwrite a different
+upstream file at the same path. Edit the local source, then refresh its vendored copy.
+Existing files
 use the manifest's `old`/`new` patches.
 
 To check the pinned refresh against a local upstream checkout:
@@ -256,3 +257,89 @@ To check the pinned refresh against a local upstream checkout:
 SAW_UPSTREAM_SOURCE=/path/to/secure-agent-workspace python3 -m unittest \
   automation.gitops.tests.test_saw.SawRefreshTests
 ```
+
+
+## Shared personal-assistant demo
+
+The demo keeps each participant's existing SAW login and private inference
+credential. All workspaces read the same synthetic Mailpit inbox, Mattermost
+team and Radicale calendar. This is the shared source account discussed in
+the workshop; do not connect personal accounts to these services.
+
+Add to the **cluster** bootstrap values alongside the existing SAW settings:
+
+```yaml
+saw:
+  demo:
+    enabled: true
+    calendarEnabled: true
+    provisioningEnabled: true
+    passwordSecret: saw-demo-password
+```
+
+Provision `vault/saw-demo-password` with a `password` key through AgnosticV's
+secret mechanism before sync. For a manual lab setup, read the password from
+a private file instead of putting it in command arguments or Git:
+
+```sh
+oc -n vault create secret generic saw-demo-password --from-file=password=/path/to/private/demo-password
+```
+
+The password must satisfy Mattermost's password policy. Keep it stable on
+resync; setup verifies an existing account and never resets its password.
+Provide username `saw-rh1` and this shared password in workshop access details.
+Mailpit and Radicale use their upstream synthetic, credential-free configuration.
+Their HTTPS routes reach the services directly; backend network policies allow
+the ingress controller and the setup job. SMTP is not exposed to the assistant.
+
+One infrastructure sync job, `vault/saw-demo-seed`, initializes the synthetic
+administrator, creates the source account/team, populates and verifies all three
+sources, and publishes only the non-admin Mattermost session to
+`secret/data/hub/saw-demo/mattermost` in Vault. Administrator and session recovery
+state stay in `vault/saw-demo-state`; neither is printed. A failed seed or Vault
+write fails the job and can be retried. The upstream services use ephemeral
+storage, so resync setup after a backend pod loses its data.
+
+Add to the **tenant** bootstrap values:
+
+```yaml
+saw:
+  demo:
+    enabled: true
+    provisioningEnabled: true
+```
+
+This selects the demo profile, attaches the three approved providers and routes,
+and syncs the shared chat credential into the namespace credential proxy.
+Inference stays at `hub/saw-<user>/inference`; no demo credential is written to
+that private path. Source readers use the existing HarnessBundle contract with
+one `governanceProfile` per service. The local notes server provides the fixed
+report writer and an upload operation denied by the existing tool-action gate.
+The demo skill prepares briefings on demand; it does not create a schedule.
+
+For local seed-script development, use port-forwards and run
+`automation/gitops/infra/bootstrap/files/seed-demo.py seed`, `verify`, `challenge`
+or `reset`. Initial population needs `MATTERMOST_ADMIN_TOKEN` and
+`SAW_DEMO_PASSWORD` in the operator environment. Retain its private state file;
+subsequent actions can reuse the non-admin session. Reset removes only the
+selected demo's generated records. The checked-in fixture set is
+`infra/bootstrap/files/demo-data.json` relative to `automation/gitops/`.
+
+For an installation of the previous per-tenant demo branch, resync the cluster
+and tenant Applications. Shared setup adopts the existing administrator from
+`openshell-agents/saw-demo-admin` before creating its recovery state; keep that
+Secret until the shared setup succeeds. Because pruning is disabled, explicitly remove the old
+`saw-demo-mailpit-access` and `saw-demo-radicale-access` Deployments/Services,
+`saw-demo-admin` Job/account/RBAC and the old `saw-<user>-demo-seed` jobs/RBAC after
+confirming the shared setup succeeded and routes target the direct services.
+Retire their unused input/state Secrets only after any needed recovery data is
+saved. Resync child service Applications too: a parent sync alone does not prove
+the Routes changed. Existing sandbox tool settings managed by the older demo
+are restored on installer apply; unrelated operator settings are preserved.
+Keep per-tenant inference, SAW account and workspace resources.
+
+Before presenting the module, verify the three live reads, a saved report and
+a matching tool-denial audit event. A direct upload check verifies the gate;
+it does not prove the malicious source message induced the action. The upstream
+on-cluster demo also shows network and provider-admission denials; only claim
+those layers when the corresponding executed operation and logs establish them.

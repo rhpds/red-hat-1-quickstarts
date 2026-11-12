@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'tenant/bootstrap/files/seed-demo.py'
+SCRIPT = Path(__file__).resolve().parents[1] / 'infra/bootstrap/files/seed-demo.py'
 
 
 class DemoDataTests(unittest.TestCase):
@@ -156,39 +156,6 @@ class DemoDataTests(unittest.TestCase):
         self.assertNotIn('ExamplePassword123!', result.stdout + result.stderr)
         self.assertEqual(result.returncode, expected_code, result.stdout + result.stderr)
         return result
-
-    def test_provisioned_identity_owns_private_team_recipient_and_calendar(self):
-        self.run_script('seed', extra_args=('--username', 'user-test'))
-        self.assertEqual(self.created['user']['username'], 'user-test')
-        self.assertEqual(self.created['team']['name'], 'user-test')
-        self.assertEqual(self.created['team']['type'], 'I')
-        self.assertEqual(self.mail[1]['To'][0]['Email'], 'user-test@example.test')
-        self.assertEqual(set(self.events), {f'/cal/user-test/test/event-{i}.ics' for i in range(3)})
-        self.run_script('verify', extra_args=('--username', 'user-test'))
-        self.run_script('reset', extra_args=('--username', 'user-test'))
-        self.assertEqual(self.events, {})
-
-    def test_existing_identity_with_wrong_password_is_not_modified(self):
-        self.created['user'] = {'id': 'existing-user', 'username': 'user-test'}
-        self.login_password = 'ExistingPassword123!'
-        result = self.run_script('seed', expected_code=1, extra_args=('--username', 'user-test'))
-        self.assertIn('HTTP 401', result.stderr)
-        self.assertEqual(self.created, {'user': {'id': 'existing-user', 'username': 'user-test'}})
-        self.assertEqual(self.mail, [{'ID': 'unrelated', 'Subject': 'Other workshop email'}])
-
-    def test_existing_public_or_foreign_team_is_rejected_before_data_writes(self):
-        self.run_script('seed', extra_args=('--username', 'user-test'))
-        self.created['team']['type'] = 'O'
-        self.requests.clear()
-        self.run_script('seed', expected_code=1, extra_args=('--username', 'user-test'))
-        self.run_script('seed', expected_code=1, extra_args=('--username', 'user-test'), MATTERMOST_ADMIN_TOKEN='', SAW_DEMO_PASSWORD='')
-        self.assertFalse(any(method in ('POST','PUT','DELETE') and not path.endswith('/users/login') for method,path in self.requests))
-        self.created['team']['type'] = 'I'
-        self.team_members = [{'user_id':'other-tenant'}]
-        self.requests.clear()
-        self.run_script('seed', expected_code=1, extra_args=('--username', 'user-test'))
-        self.run_script('seed', expected_code=1, extra_args=('--username', 'user-test'), MATTERMOST_ADMIN_TOKEN='', SAW_DEMO_PASSWORD='')
-        self.assertFalse(any(method in ('POST','PUT','DELETE') and not path.endswith('/users/login') for method,path in self.requests))
 
     def test_existing_private_state_can_reseed_without_admin_credentials(self):
         self.run_script('seed')
@@ -358,62 +325,81 @@ class DemoDataTests(unittest.TestCase):
         self.assertEqual(self.requests, [])
 
 
-class ProvisionRuntimeTests(unittest.TestCase):
-    def setUp(self):
-        path = SCRIPT.with_name('saw-demo-provision.py')
-        spec = importlib.util.spec_from_file_location('demo_provision', path)
-        self.module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.module)
-
-    def test_identity_failure_causes_no_seed_or_vault_mutation(self):
-        module = self.module
+class SharedSetupTests(unittest.TestCase):
+    def test_shared_setup_publishes_only_verified_chat_credentials_and_retains_state_on_failure(self):
+        spec = importlib.util.spec_from_file_location('shared_demo_seed', SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        secret = {'metadata': {'resourceVersion': '1'}, 'data': {}}
+        patches, actions, writes = [], [], []
+        def kube(body=None, legacy=False):
+            if legacy:
+                return {}
+            if body:
+                patches.append(body)
+                secret['data'].update(body['data'])
+            return secret
         class Client:
             def __init__(self, *args): pass
-            def request(self, *args): raise RuntimeError('HTTP 401')
-        with tempfile.TemporaryDirectory() as root, patch.object(module.seed, 'Client', Client), patch.object(module.seed, 'run') as seed:
-            with self.assertRaisesRegex(RuntimeError, '401'):
-                module.configure('user-test', 'wrong', 'https://identity.test/realms/openshell', {}, Path(root)/'state', lambda *args: self.fail('unexpected Vault write'))
-            seed.assert_not_called()
+            def request(self, method, path, body):
+                return b'{"id":"admin","roles":"system_admin"}', {'Token':'admin-marker'}
+        def populate(args):
+            actions.append(args.action)
+            if args.action == 'seed':
+                module.save_state(args.state, {'demo_id':'rh1', 'username':'saw-rh1', 'mattermost_token':'demo-marker'})
+        with tempfile.TemporaryDirectory() as root:
+            args = module.argparse.Namespace(action='seed', demo_id='rh1', state=Path(root)/'state.json')
+            original_read = Path.read_text
+            def read(path, *a, **kw):
+                if str(path) == '/input/password': return 'SharedPassword123!'
+                return original_read(path, *a, **kw)
+            with patch.object(module, 'kube_state', kube, create=True), patch.object(module, 'Client', Client), \
+                 patch.object(module, 'run', populate), patch.object(Path, 'read_text', read), \
+                 patch.object(module, 'publish_chat', lambda token: writes.append(token), create=True):
+                module.setup_shared(args)
+                self.assertEqual(actions, ['seed','verify'])
+                self.assertEqual(writes, ['demo-marker'])
+                self.assertIn('admin', secret['data'])
+                self.assertIn('state', secret['data'])
+                self.assertEqual(json.loads(base64.b64decode(secret['data']['state']))['username'], 'saw-rh1')
+                with patch.object(module, 'publish_chat', side_effect=RuntimeError('Vault unavailable')):
+                    with self.assertRaisesRegex(RuntimeError, 'Vault unavailable'):
+                        module.setup_shared(args)
+                self.assertTrue(patches[-1]['data'].get('state'), 'A Vault failure must retain the populated source session')
+                actions.clear(); writes.clear(); args.action='challenge'
+                module.setup_shared(args)
+                self.assertEqual(actions, ['challenge'])
+                self.assertEqual(writes, [])
 
-    def test_challenge_uses_existing_state_without_vault_or_administrator_login(self):
-        module = self.module
+    def test_setup_adopts_existing_demo_administrator_before_initializing_new_state(self):
+        spec = importlib.util.spec_from_file_location('shared_demo_migration', SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        admin = {'username': 'saw-lab-admin', 'password': 'ExistingAdministratorPassword!'}
+        old = {'data': {'state': base64.b64encode(json.dumps(admin).encode()).decode()}}
+        saved = {'metadata': {'resourceVersion': '1'}, 'data': {}}
+        def kube(body=None, legacy=False):
+            if legacy:
+                return old
+            if body:
+                saved['data'].update(body['data'])
+            return saved
         class Client:
             def __init__(self, *args): pass
-            def request(self, method, path, *args):
-                if path != '/protocol/openid-connect/token': raise AssertionError('unexpected administrator login')
-                return b'{"access_token":"identity-token"}', {}
-        with tempfile.TemporaryDirectory() as root, patch.object(module.seed, 'Client', Client), patch.object(module.seed, 'run') as seed:
-            path = Path(root)/'state'
-            path.write_text(json.dumps({'username':'user-test','demo_id':'user-test','mattermost_token':'existing-session'}))
-            module.configure('user-test','LabPassword123!','https://identity.test/realms/openshell',{},path,
-                             lambda *args: self.fail('unexpected Vault write'), action='challenge')
-            self.assertEqual(seed.call_count,1)
-            self.assertEqual(seed.call_args.args[0].action,'challenge')
-
-    def test_reseed_reuses_session_and_writes_only_own_provider_credentials(self):
-        module = self.module
-        calls, written = [], {}
-        class Client:
-            def __init__(self, url, token=''): self.url, self.token = url, token
-            def request(self, method, path, *args):
-                calls.append((self.url,path))
-                if path == '/protocol/openid-connect/token': return b'{"access_token":"identity-token"}', {}
-                raise AssertionError('existing session must not log in as admin')
-            def json(self, method, path):
-                self_token = self.token
-                if path != '/api/v4/users/me' or self_token != 'existing-session': raise AssertionError('unexpected source read')
-                return {'username':'user-test'}
-        with tempfile.TemporaryDirectory() as root, patch.object(module.seed, 'Client', Client), patch.object(module.seed, 'run') as seed, patch.dict(os.environ, {'MATTERMOST_ADMIN_TOKEN':'stale-admin'}):
-            path = Path(root)/'state'
-            path.write_text(json.dumps({'username':'user-test','demo_id':'user-test','mattermost_token':'existing-session'}))
-            result = module.configure('user-test','LabPassword123!','https://identity.test/realms/openshell',{},path, lambda source,data: written.update({source:data}))
-            self.assertEqual(result['mattermost_token'],'existing-session')
-            self.assertEqual(seed.call_count, 2)
-            self.assertNotIn('MATTERMOST_ADMIN_TOKEN', os.environ)
-            self.assertEqual(set(written), {'mailpit','calendar','mattermost'})
-            self.assertEqual(written['mattermost']['api_key'],'existing-session')
-            self.assertTrue(written['mailpit']['api_key'].startswith('Basic '))
-            self.assertEqual(len(calls),1)
+            def request(self, method, path, body):
+                if body['password'] != admin['password']:
+                    raise RuntimeError('POST login failed with HTTP 401')
+                return b'{"roles":"system_admin"}', {'Token':'old-admin-session'}
+            def json(self, *args):
+                raise AssertionError('An existing administrator must not be recreated')
+        with tempfile.TemporaryDirectory() as directory:
+            args = module.argparse.Namespace(action='seed', demo_id='rh1', state=Path(directory)/'state.json')
+            with patch.object(module, 'kube_state', kube), patch.object(module, 'Client', Client), \
+                 patch.object(Path, 'read_text', return_value='SharedPassword123!'), \
+                 patch.object(module, 'run', side_effect=RuntimeError('stop after administrator verification')):
+                with self.assertRaisesRegex(RuntimeError, 'stop after administrator verification'):
+                    module.setup_shared(args)
+            self.assertEqual(json.loads(base64.b64decode(saved['data']['admin'])), admin)
 
 
 if __name__ == '__main__':

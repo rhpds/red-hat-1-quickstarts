@@ -334,6 +334,9 @@ the shared prefix for the SSH key, and only the Secrets their profiles read.
       "secrets" (include "saw-users.secretNames" . | fromJsonArray)
       "metaKeys" $metaKeys
       "clusterCaSecret" ($root.Values.defaults.clusterCaSecret | default "") -}}
+{{- if ($root.Values.defaults.openshellSaw.sourceReaders | default dict).enabled -}}
+{{- $_ := set $values "providerVaultPrefixes" (dict "mattermost" "secret/data/hub/saw-demo") -}}
+{{- end -}}
 {{- if $registry.authSecret -}}
 {{- $_ := set $values "registryPullSecret" $registry.authSecret -}}
 {{- end -}}

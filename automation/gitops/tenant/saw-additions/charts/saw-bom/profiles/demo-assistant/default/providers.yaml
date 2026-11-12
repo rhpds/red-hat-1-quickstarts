@@ -15,13 +15,11 @@ spec:
       credentialSecretKey: api_key
     - name: mailpit
       type: mailpit
-      credentialSecret: mailpit
-      credentialSecretKey: api_key
+      credentialFree: true
     - name: mattermost
       type: mattermost
       credentialSecret: mattermost
       credentialSecretKey: api_key
     - name: calendar
       type: calendar
-      credentialSecret: calendar
-      credentialSecretKey: api_key
+      credentialFree: true

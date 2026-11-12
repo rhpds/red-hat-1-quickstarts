@@ -2,7 +2,7 @@
   {
     "file": "charts/governance-policy/tool-actions.yaml",
     "old": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n",
-    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: demo-assistant__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: demo-assistant__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: demo-assistant__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo-assistant__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
+    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: mailpit-reader__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: mattermost-reader__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: calendar-reader__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo-notes__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
   },
   {
     "file": "charts/openshell-keycloak/files/owner-resolver.py",
@@ -21,8 +21,23 @@
   },
   {
     "file": "charts/openshell-keycloak/values.yaml",
+    "old": "postgres:\n  image: \"registry.redhat.io/rhel9/postgresql-16:latest\"\n  storage: 1Gi\n  database: keycloak\n  username: keycloak\n",
+    "new": "postgres:\n  image: \"registry.redhat.io/rhel9/postgresql-16:latest@sha256:9223bb5f0745e66f0e4204ff87d4d1a5283f3726e9b7d9b71d7bdb2a650fc218\"\n  storage: 1Gi\n  database: keycloak\n  username: keycloak\n"
+  },
+  {
+    "file": "charts/openshell-keycloak/values.yaml",
     "old": "  # PostgreSQL of its own); other realms on it are not touched.\n  # `make keycloak-deploy` sets it when you choose to use an existing Keycloak.\n  existing: \"\"\n\n  hostname: \"\"\n\n",
     "new": "  # PostgreSQL of its own); other realms on it are not touched.\n  # `make keycloak-deploy` sets it when you choose to use an existing Keycloak.\n  existing: \"\"\n\n  # Wait for the chart-managed PostgreSQL instance before Keycloak starts.\n  # This avoids a startup race while a new database PVC/image is initializing.\n  waitForDatabase: true\n\n  hostname: \"\"\n\n"
+  },
+  {
+    "file": "charts/openshell-keycloak/values.yaml",
+    "old": "# master admin. Same rules as scripts/keycloak-redirects.py sync.\nredirectRegistrar:\n  enabled: true\n  image: registry.access.redhat.com/ubi9/python-311:latest\n  clientId: saw-redirect-registrar\n  # Empty: http://<keycloak>-service.<namespace>.svc:8080 (in-cluster).\n  keycloakUrl: \"\"\n",
+    "new": "# master admin. Same rules as scripts/keycloak-redirects.py sync.\nredirectRegistrar:\n  enabled: true\n  image: registry.access.redhat.com/ubi9/python-311:latest@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c\n  clientId: saw-redirect-registrar\n  # Empty: http://<keycloak>-service.<namespace>.svc:8080 (in-cluster).\n  keycloakUrl: \"\"\n"
+  },
+  {
+    "file": "charts/openshell-keycloak/values.yaml",
+    "old": "ownerResolver:\n  enabled: false\n  name: saw-owner-resolver\n  image: registry.access.redhat.com/ubi9/python-311:latest\n  clientId: saw-owner-resolver\n  keycloakUrl: \"\"\n  adminSecret: \"\"\n",
+    "new": "ownerResolver:\n  enabled: false\n  name: saw-owner-resolver\n  image: registry.access.redhat.com/ubi9/python-311:latest@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c\n  clientId: saw-owner-resolver\n  keycloakUrl: \"\"\n  adminSecret: \"\"\n"
   },
   {
     "file": "charts/openshell-rhdh/files/profile-catalog.json",
@@ -36,18 +51,8 @@
   },
   {
     "file": "charts/openshell-saw/files/installer/apply_bom.py",
-    "old": "                        \"or ship the bundle as an image\")\n                # A stdio server runs inside the sandbox, under its policy. It\n                # needs a governanceProfile only when it calls a service.\n                if profile:\n                    governance.append({\"kind\": \"MCP server\", \"name\": server,\n                                       \"governanceProfile\": profile, \"hosts\": []})\n                else:\n                    log(f\"WARN: harness '{name}': stdio MCP server '{server}' has no \"\n                        \"governanceProfile; its egress, if any, is enforced at runtime by \"\n",
-    "new": "                        \"or ship the bundle as an image\")\n                # A stdio server runs inside the sandbox, under its policy. It\n                # needs a governanceProfile only when it calls a service.\n                profiles = (declared.get(server) or {}).get(\"governanceProfiles\", [])\n                if not isinstance(profiles, list) or any(not isinstance(p, str) or not p for p in profiles):\n                    raise InstallerError(f\"harness '{name}': governanceProfiles must be a list of profile names\")\n                profiles = list(dict.fromkeys(([profile] if profile else []) + profiles))\n                if profiles:\n                    governance.extend({\"kind\": \"MCP server\", \"name\": server,\n                                       \"governanceProfile\": p, \"hosts\": []} for p in profiles)\n                else:\n                    log(f\"WARN: harness '{name}': stdio MCP server '{server}' has no \"\n                        \"governanceProfile; its egress, if any, is enforced at runtime by \"\n"
-  },
-  {
-    "file": "charts/openshell-saw/files/installer/apply_bom.py",
-    "old": "            bundle_id = json.loads(files[\"plugin.json\"][0].decode(\"utf-8\")).get(\"name\") or name\n        except (ValueError, AttributeError):\n            pass\n    return {\n        \"name\": name,\n        \"bundleId\": bundle_id,\n        \"agent\": spec.get(\"agent\", \"openclaw\"),\n",
-    "new": "            bundle_id = json.loads(files[\"plugin.json\"][0].decode(\"utf-8\")).get(\"name\") or name\n        except (ValueError, AttributeError):\n            pass\n    tools = spec.get(\"toolAllowlist\", [])\n    if not isinstance(tools, list) or any(not isinstance(t, str) or not re.fullmatch(r\"[A-Za-z0-9_-]+\", t) for t in tools):\n        raise InstallerError(f\"harness '{name}': toolAllowlist must contain exact tool names\")\n    return {\n        \"toolAllowlist\": tools,\n        \"name\": name,\n        \"bundleId\": bundle_id,\n        \"agent\": spec.get(\"agent\", \"openclaw\"),\n"
-  },
-  {
-    "file": "charts/openshell-saw/files/installer/apply_bom.py",
     "old": "    return [] if name == \"default\" else [\"--workspace\", name]\n\n\n_TOOL_GATE_PACKAGE = \"\"\"\\\n{\n  \"name\": \"saw-tool-gate\",\n",
-    "new": "    return [] if name == \"default\" else [\"--workspace\", name]\n\n\n# Configure channels and the harness's optional tool scope before any OpenClaw\n# CLI call: a provider token can otherwise trigger automatic channel installation.\n_OPENCLAW_PREFLIGHT = \"\"\"\\\nconst fs = require(\"node:fs\");\nconst root = \"/sandbox/.openclaw\";\nconst file = root + \"/openclaw.json\";\nconst desired = JSON.parse(process.argv[1]);\nconst cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, \"utf8\")) : {};\ncfg.channels ??= {};\ncfg.plugins ??= {};\ncfg.plugins.entries ??= {};\nfor (const name of desired.channels) {\n  cfg.channels[name] = {...cfg.channels[name], enabled: false};\n  cfg.plugins.entries[name] = {...cfg.plugins.entries[name], enabled: false};\n}\n// Migrate the previous demo connector without retaining executable plugin paths.\nif (Array.isArray(cfg.plugins.load?.paths)) {\n  cfg.plugins.load.paths = cfg.plugins.load.paths.filter(p => p !== \"/sandbox/.saw/trusted/source-readers\");\n}\nif (Array.isArray(cfg.plugins.allow)) cfg.plugins.allow = cfg.plugins.allow.filter(p => p !== \"saw-source-readers\");\ndelete cfg.plugins.entries[\"saw-source-readers\"];\nconst saved = root + \"/saw-harness-tools-before.json\";\nconst legacy = root + \"/saw-source-tools-before.json\";\nlet state = fs.existsSync(saved) ? JSON.parse(fs.readFileSync(saved, \"utf8\")) : null;\nif (fs.existsSync(legacy)) {\n  state ??= {before: JSON.parse(fs.readFileSync(legacy, \"utf8\")), managed: cfg.tools?.allow};\n}\nfs.mkdirSync(root, {recursive: true});\nif (desired.tools.length) {\n  state ??= {before: cfg.tools || {}};\n  state.managed = desired.tools;\n  fs.writeFileSync(saved, JSON.stringify(state), {mode: 0o600});\n  cfg.tools = {...cfg.tools, allow: desired.tools, toolSearch: false};\n} else if (state) {\n  cfg.tools ??= {};\n  for (const [key, managed] of [[\"allow\", state.managed], [\"toolSearch\", false]]) {\n    if (JSON.stringify(cfg.tools[key]) === JSON.stringify(managed)) {\n      if (key in state.before) cfg.tools[key] = state.before[key]; else delete cfg.tools[key];\n    }\n  }\n  if (fs.existsSync(saved)) fs.unlinkSync(saved);\n}\nfs.writeFileSync(file, JSON.stringify(cfg, null, 2) + \"\\\\n\", {mode: 0o600});\nif (fs.existsSync(legacy)) fs.unlinkSync(legacy);\n\"\"\"\n\n\n_TOOL_GATE_PACKAGE = \"\"\"\\\n{\n  \"name\": \"saw-tool-gate\",\n"
+    "new": "    return [] if name == \"default\" else [\"--workspace\", name]\n\n\n# Disable provider channels before OpenClaw CLI calls can auto-install them.\n# Restore tool settings left by the older demo harness during migration.\n_OPENCLAW_PREFLIGHT = \"\"\"\\\nconst fs = require(\"node:fs\");\nconst root = \"/sandbox/.openclaw\";\nconst file = root + \"/openclaw.json\";\nconst desired = JSON.parse(process.argv[1]);\nconst cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, \"utf8\")) : {};\ncfg.channels ??= {};\ncfg.plugins ??= {};\ncfg.plugins.entries ??= {};\nfor (const name of desired.channels) {\n  cfg.channels[name] = {...cfg.channels[name], enabled: false};\n  cfg.plugins.entries[name] = {...cfg.plugins.entries[name], enabled: false};\n}\n// Migrate the previous demo connector without retaining executable plugin paths.\nif (Array.isArray(cfg.plugins.load?.paths)) {\n  cfg.plugins.load.paths = cfg.plugins.load.paths.filter(p => p !== \"/sandbox/.saw/trusted/source-readers\");\n}\nif (Array.isArray(cfg.plugins.allow)) cfg.plugins.allow = cfg.plugins.allow.filter(p => p !== \"saw-source-readers\");\ndelete cfg.plugins.entries[\"saw-source-readers\"];\nconst saved = root + \"/saw-harness-tools-before.json\";\nconst legacy = root + \"/saw-source-tools-before.json\";\nlet state = fs.existsSync(saved) ? JSON.parse(fs.readFileSync(saved, \"utf8\")) : null;\nif (fs.existsSync(legacy)) {\n  state ??= {before: JSON.parse(fs.readFileSync(legacy, \"utf8\")), managed: cfg.tools?.allow};\n}\nfs.mkdirSync(root, {recursive: true});\nif (state) {\n  cfg.tools ??= {};\n  for (const [key, managed] of [[\"allow\", state.managed], [\"toolSearch\", false]]) {\n    if (JSON.stringify(cfg.tools[key]) === JSON.stringify(managed)) {\n      if (key in state.before) cfg.tools[key] = state.before[key]; else delete cfg.tools[key];\n    }\n  }\n  if (fs.existsSync(saved)) fs.unlinkSync(saved);\n}\nfs.writeFileSync(file, JSON.stringify(cfg, null, 2) + \"\\\\n\", {mode: 0o600});\nif (fs.existsSync(legacy)) fs.unlinkSync(legacy);\n\"\"\"\n\n\n_TOOL_GATE_PACKAGE = \"\"\"\\\n{\n  \"name\": \"saw-tool-gate\",\n"
   },
   {
     "file": "charts/openshell-saw/files/installer/apply_bom.py",
@@ -67,12 +72,17 @@
   {
     "file": "charts/openshell-saw/files/installer/apply_bom.py",
     "old": "        self.install_keepalive(ws, sb)\n\n    def disable_provider_channels(self, ws, sb, exec_cmd, oc_env):\n        \"\"\"Keep OpenClaw's own chat channel off for a provider that shares\n        its name (slack). The provider is for governed reads (the harness's\n        MCP servers); onboarding skips channels. Found live: with the Slack\n        provider attached, the gateway treats the slack channel as configured,\n        tries to install @openclaw/slack from npm at startup (egress denied)\n        and refuses to start; the UI then answers 502.\"\"\"\n        types = {p.type for p in ws.providers if p.name in sb.providers}\n        for channel in sorted(types & OPENCLAW_CHAT_CHANNELS):\n            self.cli(*exec_cmd, \"sh\", \"-c\",\n                     f\"{oc_env} openclaw config set channels.{channel}.enabled false\",\n                     check=False)\n\n    def configure_harness(self, ws, sb, exec_cmd, oc_env):\n        \"\"\"Point OpenClaw at the mounted bundle (openclaw_harness_config).\n",
-    "new": "        self.install_keepalive(ws, sb)\n\n    def disable_provider_channels(self, ws, sb, exec_cmd, oc_env):\n        \"\"\"Keep provider channels off and apply the mounted harness's tool scope.\"\"\"\n        types = {p.type for p in ws.providers if p.name in sb.providers}\n        info = self.harness_info.get((ws.name, sb.name)) or {}\n        settings = {\"channels\": sorted(types & OPENCLAW_CHAT_CHANNELS),\n                    \"tools\": info.get(\"toolAllowlist\", [])}\n        self.cli(*exec_cmd, \"node\", \"-e\", _OPENCLAW_PREFLIGHT, json.dumps(settings))\n\n    def configure_harness(self, ws, sb, exec_cmd, oc_env):\n        \"\"\"Point OpenClaw at the mounted bundle (openclaw_harness_config).\n"
+    "new": "        self.install_keepalive(ws, sb)\n\n    def disable_provider_channels(self, ws, sb, exec_cmd, oc_env):\n        \"\"\"Keep provider channels off; restore settings from the old demo harness.\"\"\"\n        types = {p.type for p in ws.providers if p.name in sb.providers}\n        settings = {\"channels\": sorted(types & OPENCLAW_CHAT_CHANNELS)}\n        self.cli(*exec_cmd, \"node\", \"-e\", _OPENCLAW_PREFLIGHT, json.dumps(settings))\n\n    def configure_harness(self, ws, sb, exec_cmd, oc_env):\n        \"\"\"Point OpenClaw at the mounted bundle (openclaw_harness_config).\n"
+  },
+  {
+    "file": "charts/openshell-saw/files/installer/apply_bom.py",
+    "old": "                f\"|| {oc_env} openclaw plugins enable {shlex.quote(i)}\" for i in ids)\n            self.cli(*exec_cmd, \"sh\", \"-c\", script, check=False)\n        self.configure_harness_mcp(ws, sb, exec_cmd, oc_env, info)\n\n    def configure_harness_mcp(self, ws, sb, exec_cmd, oc_env, info):\n        \"\"\"Re-declare the bundle's MCP servers under mcp.servers\n",
+    "new": "                f\"|| {oc_env} openclaw plugins enable {shlex.quote(i)}\" for i in ids)\n            self.cli(*exec_cmd, \"sh\", \"-c\", script, check=False)\n        self.configure_harness_mcp(ws, sb, exec_cmd, oc_env, info)\n        # Onboarding may reset tool settings; reapply scope before starting the gateway.\n        self.disable_provider_channels(ws, sb, exec_cmd, oc_env)\n\n    def configure_harness_mcp(self, ws, sb, exec_cmd, oc_env, info):\n        \"\"\"Re-declare the bundle's MCP servers under mcp.servers\n"
   },
   {
     "file": "charts/openshell-saw/files/installer/tool-actions.yaml",
     "old": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n",
-    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: demo-assistant__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: demo-assistant__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: demo-assistant__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo-assistant__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
+    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: mailpit-reader__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: mattermost-reader__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: calendar-reader__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo-notes__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
   },
   {
     "file": "charts/openshell-saw/files/installer/tool-gate.test.mjs",
@@ -82,17 +92,32 @@
   {
     "file": "charts/openshell-saw/files/installer/tool-gate.test.mjs",
     "old": "\ntest(\"only the listed read-only tools are allowed\", () => {\n  for (const toolName of [\"read\", \"memory_search\", \"memory_get\", \"session_status\",\n    \"sessions_list\", \"sessions_history\"]) {\n    assert.equal(call({ toolName, params: {} }).effect.kind, \"allow\", toolName);\n  }\n  for (const toolName of [\"web_fetch\", \"web_search\", \"write\", \"edit\", \"browser\", \"cron\",\n",
-    "new": "\ntest(\"only the listed read-only tools are allowed\", () => {\n  for (const toolName of [\"read\", \"memory_search\", \"memory_get\", \"session_status\",\n    \"sessions_list\", \"sessions_history\", \"demo-assistant__saw_read_email\", \"demo-assistant__saw_read_chat\", \"demo-assistant__saw_read_calendar\"]) {\n    assert.equal(call({ toolName, params: {} }).effect.kind, \"allow\", toolName);\n  }\n  for (const toolName of [\"web_fetch\", \"web_search\", \"write\", \"edit\", \"browser\", \"cron\",\n"
+    "new": "\ntest(\"only the listed read-only tools are allowed\", () => {\n  for (const toolName of [\"read\", \"memory_search\", \"memory_get\", \"session_status\",\n    \"sessions_list\", \"sessions_history\", \"mailpit-reader__saw_read_email\", \"mattermost-reader__saw_read_chat\", \"calendar-reader__saw_read_calendar\"]) {\n    assert.equal(call({ toolName, params: {} }).effect.kind, \"allow\", toolName);\n  }\n  for (const toolName of [\"web_fetch\", \"web_search\", \"write\", \"edit\", \"browser\", \"cron\",\n"
   },
   {
     "file": "charts/openshell-saw/files/installer/tool-gate.test.mjs",
     "old": "  assert.equal(result.record.rule, \"audit-unwritable\");\n  assert.equal(result.hook.block, true);\n});\n",
-    "new": "  assert.equal(result.record.rule, \"audit-unwritable\");\n  assert.equal(result.hook.block, true);\n});\n\ntest(\"the report writer is allowed but a source-induced upload stays denied by default\", () => {\n  assert.equal(call({toolName: \"demo-assistant__saw_save_report\", params: {content: \"synthetic report\"}}).effect.kind, \"allow\");\n  const upload = call({toolName: \"demo-assistant__saw_upload_summary\", params: {content: \"synthetic briefing\"}});\n  assert.equal(upload.effect.kind, \"deny\");\n  assert.equal(upload.record.rule, \"default\");\n  assert.equal(hookResult(upload, () => {}).block, true);\n});\n"
+    "new": "  assert.equal(result.record.rule, \"audit-unwritable\");\n  assert.equal(result.hook.block, true);\n});\n\ntest(\"the report writer is allowed but a source-induced upload stays denied by default\", () => {\n  assert.equal(call({toolName: \"demo-notes__saw_save_report\", params: {content: \"synthetic report\"}}).effect.kind, \"allow\");\n  const upload = call({toolName: \"demo-notes__saw_upload_summary\", params: {content: \"synthetic briefing\"}});\n  assert.equal(upload.effect.kind, \"deny\");\n  assert.equal(upload.record.rule, \"default\");\n  assert.equal(hookResult(upload, () => {}).block, true);\n});\n"
   },
   {
     "file": "charts/openshell-saw/templates/credential-proxy.yaml",
     "old": "    {{- end -}}\n    {{- $_ := set $profiles $profile.id $hosts -}}\n  {{- end -}}\n{{- end -}}\n{{- if hasKey $profiles \"nvidia\" -}}{{- $_ := set $profiles \"build\" (index $profiles \"nvidia\") -}}{{- end -}}\n{{- $bindings := list -}}\n",
-    "new": "    {{- end -}}\n    {{- $_ := set $profiles $profile.id $hosts -}}\n  {{- end -}}\n{{- end -}}\n{{- $customHost := .Values.credentialProxy.customInferenceHost | default \"\" -}}\n{{- if $customHost -}}\n  {{- if not (regexMatch \"^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$\" $customHost) -}}\n    {{- fail \"credentialProxy.customInferenceHost must be a hostname\" -}}\n  {{- end -}}\n  {{- if not (has $customHost (include \"openshell-sandbox.egressHosts\" . | fromJsonArray)) -}}\n    {{- fail \"credentialProxy.customInferenceHost must also be allowed by egress\" -}}\n  {{- end -}}\n  {{- $_ := set $profiles \"custom-inference\" (list $customHost) -}}\n{{- end -}}\n{{- if and .Values.sourceReaders.enabled .Values.sourceReaders.tenantUser -}}\n{{- range $provider, $service := dict \"mailpit\" \"mailpit\" \"mattermost\" \"mattermost\" \"calendar\" \"radicale\" -}}\n  {{- $host := printf \"%s-ui-openshell-agents.apps.%s\" $service (required \"global.clusterDomain is required for demo credentials\" $.Values.global.clusterDomain) -}}\n  {{- if not (has $host (include \"openshell-sandbox.egressHosts\" $ | fromJsonArray)) -}}\n    {{- fail \"tenant demo credential hosts must also be allowed by egress\" -}}\n  {{- end -}}\n  {{- $_ := set $profiles $provider (list $host) -}}\n{{- end -}}\n{{- end -}}\n{{- if hasKey $profiles \"nvidia\" -}}{{- $_ := set $profiles \"build\" (index $profiles \"nvidia\") -}}{{- end -}}\n{{- $bindings := list -}}\n"
+    "new": "    {{- end -}}\n    {{- $_ := set $profiles $profile.id $hosts -}}\n  {{- end -}}\n{{- end -}}\n{{- $customHost := .Values.credentialProxy.customInferenceHost | default \"\" -}}\n{{- if $customHost -}}\n  {{- if not (regexMatch \"^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$\" $customHost) -}}\n    {{- fail \"credentialProxy.customInferenceHost must be a hostname\" -}}\n  {{- end -}}\n  {{- if not (has $customHost (include \"openshell-sandbox.egressHosts\" . | fromJsonArray)) -}}\n    {{- fail \"credentialProxy.customInferenceHost must also be allowed by egress\" -}}\n  {{- end -}}\n  {{- $_ := set $profiles \"custom-inference\" (list $customHost) -}}\n{{- end -}}\n{{- if .Values.sourceReaders.enabled -}}\n{{- range $provider, $service := dict \"mattermost\" \"mattermost\" -}}\n  {{- $host := printf \"%s-ui-openshell-agents.apps.%s\" $service (required \"global.clusterDomain is required for demo credentials\" $.Values.global.clusterDomain) -}}\n  {{- if not (has $host (include \"openshell-sandbox.egressHosts\" $ | fromJsonArray)) -}}\n    {{- fail \"demo credential hosts must also be allowed by egress\" -}}\n  {{- end -}}\n  {{- $_ := set $profiles $provider (list $host) -}}\n{{- end -}}\n{{- end -}}\n{{- if hasKey $profiles \"nvidia\" -}}{{- $_ := set $profiles \"build\" (index $profiles \"nvidia\") -}}{{- end -}}\n{{- $bindings := list -}}\n"
+  },
+  {
+    "file": "charts/openshell-saw/values.yaml",
+    "old": "    # data-science profile has one). Remove it if no profile needs it.\n    # A tag is accepted here with a warning; pin a digest when one exists.\n    nemoclaw:\n      cliImage: ghcr.io/validatedpatterns-sandbox/nemoclaw-cli:latest\n\n# OpenShell gateway runtime configuration inside the VM.\nopenshell:\n",
+    "new": "    # data-science profile has one). Remove it if no profile needs it.\n    # A tag is accepted here with a warning; pin a digest when one exists.\n    nemoclaw:\n      cliImage: ghcr.io/validatedpatterns-sandbox/nemoclaw-cli:latest@sha256:3283cf580e8187a53371c5cabc0557abf9845066a871cbd6596a500a9bcd04a0\n\n# OpenShell gateway runtime configuration inside the VM.\nopenshell:\n"
+  },
+  {
+    "file": "charts/openshell-saw/values.yaml",
+    "old": "# Needs oidc.issuerUrl (or global.clusterDomain) and a known webui host.\ndashboard:\n  enabled: true\n  image: \"quay.io/gkrumbach07/openshell-dashboard:latest\"\n  proxyImage: \"quay.io/oauth2-proxy/oauth2-proxy:v7.9.0\"\n  clientId: \"openshell-dashboard\"\n  # The dashboard and sandbox-UI oauth2-proxies verify the issuer: with the\n  # issuer CA (oidc.caBundle / oidc.clusterCaSecret) when one is configured,\n",
+    "new": "# Needs oidc.issuerUrl (or global.clusterDomain) and a known webui host.\ndashboard:\n  enabled: true\n  image: \"quay.io/gkrumbach07/openshell-dashboard:latest@sha256:873d4379edfa42a7ff56451a98d4f448c2b3a7085c7beb74d1368606addced80\"\n  proxyImage: \"quay.io/oauth2-proxy/oauth2-proxy:v7.9.0@sha256:37c1570c0427e02fc7c947ef2c04e8995b8347b7abc9fcf1dbb4e376a4b221a7\"\n  clientId: \"openshell-dashboard\"\n  # The dashboard and sandbox-UI oauth2-proxies verify the issuer: with the\n  # issuer CA (oidc.caBundle / oidc.clusterCaSecret) when one is configured,\n"
+  },
+  {
+    "file": "charts/openshell-saw/values.yaml",
+    "old": "\n# The pre-delete cleanup pod (cleanupOnDelete). There is no prepare Job.\njob:\n  image: \"registry.fedoraproject.org/fedora:44\"\n\n# Each SAW is installed into its own namespace (the release namespace), e.g.\n# saw-<name>. Label that namespace openshell.pattern/saw=true so the shared\n",
+    "new": "\n# The pre-delete cleanup pod (cleanupOnDelete). There is no prepare Job.\njob:\n  image: \"registry.fedoraproject.org/fedora:44@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0\"\n\n# Each SAW is installed into its own namespace (the release namespace), e.g.\n# saw-<name>. Label that namespace openshell.pattern/saw=true so the shared\n"
   },
   {
     "file": "charts/openshell-saw/values.yaml",
@@ -100,9 +125,24 @@
     "new": "  # an in-cluster inference Service or npm mirror.\n  extraEgress: []\n  extraIngress: []\n\n# Optional fixed-scope synthetic source tools. Enable only after all three\n# demo providers are approved, attached and ready; no credentials belong here.\nsourceReaders:\n  enabled: false\n  demoId: rh1\n"
   },
   {
+    "file": "charts/pattern-secrets/templates/additional-provider-secrets.yaml",
+    "old": "    name: {{ . | quote }}\n  dataFrom:\n    - extract:\n        key: {{ printf \"%s/%s\" $.Values.vaultPrefix . | quote }}\n{{- end }}\n{{- end }}\n",
+    "new": "    name: {{ . | quote }}\n  dataFrom:\n    - extract:\n        key: {{ printf \"%s/%s\" ((index ($.Values.providerVaultPrefixes | default dict) .) | default $.Values.vaultPrefix) . | quote }}\n{{- end }}\n{{- end }}\n"
+  },
+  {
     "file": "charts/pattern-secrets/templates/cluster-ca-secret.yaml",
     "old": "  target:\n    name: {{ . }}\n  data:\n    - secretKey: ca-bundle.crt\n      remoteRef:\n        key: {{ $.Values.sshVaultPrefix | default $.Values.vaultPrefix }}/cluster-ingress-ca\n        property: ca-bundle.crt\n",
     "new": "  target:\n    name: {{ . }}\n  data:\n    - secretKey: {{ \"ca-bundle.crt\" | quote }}\n      remoteRef:\n        key: {{ $.Values.sshVaultPrefix | default $.Values.vaultPrefix }}/cluster-ingress-ca\n        property: ca-bundle.crt\n"
+  },
+  {
+    "file": "charts/pattern-secrets/templates/provider-metadata.yaml",
+    "old": "        {{- end }}\n  dataFrom:\n    - extract:\n        key: {{ printf \"%s/%s\" $.Values.vaultPrefix $name | quote }}\n{{- end }}\n{{- end }}\n",
+    "new": "        {{- end }}\n  dataFrom:\n    - extract:\n        key: {{ printf \"%s/%s\" ((index ($.Values.providerVaultPrefixes | default dict) $name) | default $.Values.vaultPrefix) $name | quote }}\n{{- end }}\n{{- end }}\n"
+  },
+  {
+    "file": "charts/pattern-secrets/values.yaml",
+    "old": "# Optional Secret for a VM to pull images from a private registry. The token\n# comes from the shared <sshVaultPrefix>/registry-pull Vault entry.\nregistryPullSecret: \"\"\n",
+    "new": "# Optional Secret for a VM to pull images from a private registry. The token\n# comes from the shared <sshVaultPrefix>/registry-pull Vault entry.\nregistryPullSecret: \"\"\n\n# Optional per-provider prefix; other credentials keep their existing private path.\nproviderVaultPrefixes: {}\n"
   },
   {
     "file": "charts/saw-bom/profiles/custom-inference/default/sandbox.yaml",
@@ -122,7 +162,7 @@
   {
     "file": "charts/saw-users/files/profile-catalog.json",
     "old": "        }\n      ]\n    },\n    \"personal-assistant\": {\n      \"description\": \"Personal assistant: NemoClaw agent with NVIDIA inference and a daily Slack and Gmail briefing\",\n      \"harnessRequired\": true,\n",
-    "new": "        }\n      ]\n    },\n    \"demo-assistant\": {\n      \"description\": \"Synthetic personal assistant using the provisioned lab identity\",\n      \"harnessRequired\": true,\n      \"secrets\": {\n        \"calendar\": {\n          \"fields\": [\n            {\n              \"key\": \"api_key\",\n              \"kind\": \"secret\",\n              \"required\": true,\n              \"title\": \"API key\"\n            }\n          ],\n          \"provider\": \"calendar\",\n          \"providers\": [\n            \"calendar\"\n          ]\n        },\n        \"inference\": {\n          \"fields\": [\n            {\n              \"key\": \"api_key\",\n              \"kind\": \"secret\",\n              \"required\": true,\n              \"title\": \"API key\"\n            },\n            {\n              \"key\": \"url\",\n              \"kind\": \"url\",\n              \"required\": true,\n              \"title\": \"Endpoint base URL (OpenAI-compatible, ending in /v1)\"\n            },\n            {\n              \"key\": \"model\",\n              \"kind\": \"text\",\n              \"required\": true,\n              \"title\": \"Model\"\n            }\n          ],\n          \"provider\": \"custom-inference\",\n          \"providers\": [\n            \"custom-inference\"\n          ]\n        },\n        \"mailpit\": {\n          \"fields\": [\n            {\n              \"key\": \"api_key\",\n              \"kind\": \"secret\",\n              \"required\": true,\n              \"title\": \"API key\"\n            }\n          ],\n          \"provider\": \"mailpit\",\n          \"providers\": [\n            \"mailpit\"\n          ]\n        },\n        \"mattermost\": {\n          \"fields\": [\n            {\n              \"key\": \"api_key\",\n              \"kind\": \"secret\",\n              \"required\": true,\n              \"title\": \"API key\"\n            }\n          ],\n          \"provider\": \"mattermost\",\n          \"providers\": [\n            \"mattermost\"\n          ]\n        }\n      },\n      \"workspaces\": [\n        {\n          \"description\": \"Synthetic personal assistant using the provisioned lab identity\",\n          \"enabled\": true,\n          \"name\": \"default\",\n          \"sandboxes\": [\n            {\n              \"enabled\": true,\n              \"harnessRequired\": true,\n              \"name\": \"notebook\",\n              \"type\": \"openclaw\",\n              \"uiRoute\": true\n            }\n          ]\n        }\n      ]\n    },\n    \"personal-assistant\": {\n      \"description\": \"Personal assistant: NemoClaw agent with NVIDIA inference and a daily Slack and Gmail briefing\",\n      \"harnessRequired\": true,\n"
+    "new": "        }\n      ]\n    },\n    \"demo-assistant\": {\n      \"description\": \"Shared synthetic email, chat and calendar assistant\",\n      \"harnessRequired\": true,\n      \"secrets\": {\n        \"inference\": {\n          \"fields\": [\n            {\n              \"key\": \"api_key\",\n              \"kind\": \"secret\",\n              \"required\": true,\n              \"title\": \"API key\"\n            },\n            {\n              \"key\": \"url\",\n              \"kind\": \"url\",\n              \"required\": true,\n              \"title\": \"Endpoint base URL (OpenAI-compatible, ending in /v1)\"\n            },\n            {\n              \"key\": \"model\",\n              \"kind\": \"text\",\n              \"required\": true,\n              \"title\": \"Model\"\n            }\n          ],\n          \"provider\": \"custom-inference\",\n          \"providers\": [\n            \"custom-inference\"\n          ]\n        },\n        \"mattermost\": {\n          \"fields\": [\n            {\n              \"key\": \"api_key\",\n              \"kind\": \"secret\",\n              \"required\": true,\n              \"title\": \"API key\"\n            }\n          ],\n          \"provider\": \"mattermost\",\n          \"providers\": [\n            \"mattermost\"\n          ]\n        }\n      },\n      \"workspaces\": [\n        {\n          \"description\": \"Shared synthetic email, chat and calendar assistant\",\n          \"enabled\": true,\n          \"name\": \"default\",\n          \"sandboxes\": [\n            {\n              \"enabled\": true,\n              \"harnessRequired\": true,\n              \"name\": \"notebook\",\n              \"type\": \"openclaw\",\n              \"uiRoute\": true\n            }\n          ]\n        }\n      ]\n    },\n    \"personal-assistant\": {\n      \"description\": \"Personal assistant: NemoClaw agent with NVIDIA inference and a daily Slack and Gmail briefing\",\n      \"harnessRequired\": true,\n"
   },
   {
     "file": "charts/saw-users/templates/_helpers.tpl",
@@ -130,44 +170,8 @@
     "new": "{{- $profiles = $user.profiles -}}\n{{- end -}}\n{{- $bomValues := dict \"profiles\" $profiles -}}\n{{- $demo := deepCopy ($root.Values.defaults.openshellSaw.sourceReaders | default dict) -}}\n{{- if $demo.enabled -}}\n{{- $_ := set $demo \"clusterDomain\" $root.Values.global.clusterDomain -}}\n{{- $_ := set $bomValues \"demoAssistant\" $demo -}}\n{{- end -}}\n{{- $imageOverrides := deepCopy ($root.Values.defaults.imageOverrides | default dict) -}}\n{{- range $name, $image := ($user.imageOverrides | default dict) -}}\n{{- $_ := set $imageOverrides $name $image -}}\n"
   },
   {
-    "file": "charts/saw-bom/harness/demo-assistant/harness.yaml",
-    "source": "tenant/saw-additions/charts/saw-bom/harness/demo-assistant/harness.yaml"
-  },
-  {
-    "file": "charts/saw-bom/harness/demo-assistant/mcp.json",
-    "source": "tenant/saw-additions/charts/saw-bom/harness/demo-assistant/mcp.json"
-  },
-  {
-    "file": "charts/saw-bom/harness/demo-assistant/mcp/source-readers.mjs",
-    "source": "tenant/saw-additions/charts/saw-bom/harness/demo-assistant/mcp/source-readers.mjs"
-  },
-  {
-    "file": "charts/saw-bom/harness/demo-assistant/mcp/source-tools.mjs",
-    "source": "tenant/saw-additions/charts/saw-bom/harness/demo-assistant/mcp/source-tools.mjs"
-  },
-  {
-    "file": "charts/saw-bom/harness/demo-assistant/plugin.json",
-    "source": "tenant/saw-additions/charts/saw-bom/harness/demo-assistant/plugin.json"
-  },
-  {
-    "file": "charts/saw-bom/harness/demo-assistant/skills/daily-briefing/SKILL.md",
-    "source": "tenant/saw-additions/charts/saw-bom/harness/demo-assistant/skills/daily-briefing/SKILL.md"
-  },
-  {
-    "file": "charts/saw-bom/profiles/demo-assistant/default/providers.yaml",
-    "source": "tenant/saw-additions/charts/saw-bom/profiles/demo-assistant/default/providers.yaml"
-  },
-  {
-    "file": "charts/saw-bom/profiles/demo-assistant/default/sandbox.yaml",
-    "source": "tenant/saw-additions/charts/saw-bom/profiles/demo-assistant/default/sandbox.yaml"
-  },
-  {
-    "file": "charts/saw-bom/profiles/demo-assistant/default/workspace.yaml",
-    "source": "tenant/saw-additions/charts/saw-bom/profiles/demo-assistant/default/workspace.yaml"
-  },
-  {
-    "file": "charts/openshell-saw/files/installer/apply_bom.py",
-    "old": "        self.configure_harness_mcp(ws, sb, exec_cmd, oc_env, info)\n\n    def configure_harness_mcp",
-    "new": "        self.configure_harness_mcp(ws, sb, exec_cmd, oc_env, info)\n        # Onboarding may reset tool settings; reapply scope before starting the gateway.\n        self.disable_provider_channels(ws, sb, exec_cmd, oc_env)\n\n    def configure_harness_mcp"
+    "file": "charts/saw-users/templates/_helpers.tpl",
+    "old": "      \"secrets\" (include \"saw-users.secretNames\" . | fromJsonArray)\n      \"metaKeys\" $metaKeys\n      \"clusterCaSecret\" ($root.Values.defaults.clusterCaSecret | default \"\") -}}\n{{- if $registry.authSecret -}}\n{{- $_ := set $values \"registryPullSecret\" $registry.authSecret -}}\n{{- end -}}\n",
+    "new": "      \"secrets\" (include \"saw-users.secretNames\" . | fromJsonArray)\n      \"metaKeys\" $metaKeys\n      \"clusterCaSecret\" ($root.Values.defaults.clusterCaSecret | default \"\") -}}\n{{- if ($root.Values.defaults.openshellSaw.sourceReaders | default dict).enabled -}}\n{{- $_ := set $values \"providerVaultPrefixes\" (dict \"mattermost\" \"secret/data/hub/saw-demo\") -}}\n{{- end -}}\n{{- if $registry.authSecret -}}\n{{- $_ := set $values \"registryPullSecret\" $registry.authSecret -}}\n{{- end -}}\n"
   }
 ]

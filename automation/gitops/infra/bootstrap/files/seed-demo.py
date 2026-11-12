@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import os
 import re
+import secrets
 import ssl
 import sys
 import urllib.error
@@ -125,7 +126,7 @@ def seed_challenge(chat, demo_id, channel_id, owned_posts):
 
 
 def prepare_chat(admin, args):
-    username = args.username or 'saw-' + args.demo_id
+    username = 'saw-' + args.demo_id
     password = os.environ.get('SAW_DEMO_PASSWORD', '')
     if not password:
         raise ValueError('set SAW_DEMO_PASSWORD for the dedicated demo user')
@@ -138,20 +139,9 @@ def prepare_chat(admin, args):
     token = headers.get('Token')
     if not token:
         raise RuntimeError('Mattermost login did not return a session token')
-    identity = {}
-    if args.username:
-        identity = {'user_id': user['id'], 'provisioner_user_id': admin.json('GET', '/api/v4/users/me')['id']}
     team = admin.json('GET', '/api/v4/teams/name/' + username, missing=True)
     if team is None:
-        team = admin.json('POST', '/api/v4/teams', {'name': username, 'display_name': 'SAW ' + args.demo_id, 'type': 'I' if args.username else 'O'})
-    elif args.username:
-        if team.get('type') != 'I':
-            raise ValueError('Existing tenant team is not private; refusing to seed it')
-        members = admin.json('GET', f'/api/v4/teams/{team["id"]}/members?per_page=200&page=0')
-        allowed = {user['id'], identity['provisioner_user_id']}
-        if (not isinstance(members, list) or not members or
-                any(m.get('user_id') not in allowed for m in members)):
-            raise ValueError('Existing team has unverified ownership or other members; refusing to seed it')
+        team = admin.json('POST', '/api/v4/teams', {'name': username, 'display_name': 'SAW ' + args.demo_id, 'type': 'O'})
     member_path = f'/api/v4/teams/{team["id"]}/members/{user["id"]}'
     if admin.json('GET', member_path, missing=True) is None:
         admin.json('POST', f'/api/v4/teams/{team["id"]}/members', {'team_id': team['id'], 'user_id': user['id']})
@@ -163,7 +153,7 @@ def prepare_chat(admin, args):
         admin.json('POST', f'/api/v4/channels/{channel["id"]}/members', {'user_id': user['id']})
     return {'demo_id': args.demo_id, 'channel_id': channel['id'], 'username': username,
             'mattermost_token': token, 'mailpit_url': args.mailpit_url,
-            'mattermost_url': args.mattermost_url, 'radicale_url': args.radicale_url, **identity}
+            'mattermost_url': args.mattermost_url, 'radicale_url': args.radicale_url}
 
 
 def save_state(path, state):
@@ -193,8 +183,6 @@ def run(args):
     else:
         state = json.loads(args.state.read_text())
         args.date = args.date or dt.date.fromisoformat(state['date'])
-        if args.username and state['username'] != args.username:
-            raise ValueError('state does not belong to the provisioned user')
         for key in ('demo_id', 'mailpit_url', 'mattermost_url', 'radicale_url'):
             if state[key] != getattr(args, key):
                 raise ValueError('state does not match the selected demo and endpoints; use its original configuration')
@@ -202,16 +190,8 @@ def run(args):
             state['date'] = args.date.isoformat()
             save_state(args.state, state)
     chat = Client(args.mattermost_url, state['mattermost_token'])
-    if args.username:
-        team = chat.json('GET', '/api/v4/teams/name/' + args.username)
-        if team.get('type') != 'I':
-            raise ValueError('Tenant team is not private; refusing source mutations')
-        members = chat.json('GET', f'/api/v4/teams/{team["id"]}/members?per_page=200&page=0')
-        allowed = {state['user_id'], state['provisioner_user_id']}
-        if not isinstance(members, list) or not members or any(m.get('user_id') not in allowed for m in members):
-            raise ValueError('Tenant team membership changed; review source access before reseeding')
     prefix = f'[SAW:{args.demo_id}] '
-    owner = args.username or 'demo'
+    owner = 'demo'
     collection = '/' + owner + '/' + args.demo_id + '/'
     emails, chat_text, events = fixtures(args.date)
     owned_subjects = {prefix + subject for subject, _ in emails}
@@ -303,11 +283,91 @@ def run(args):
     print(f'{args.action} complete for {args.demo_id}; private connection details saved in the state file.')
 
 
+def kube_state(body=None, legacy=False):
+    root = Path('/var/run/secrets/kubernetes.io/serviceaccount')
+    location = 'openshell-agents/secrets/saw-demo-admin' if legacy else 'vault/secrets/saw-demo-state'
+    request = urllib.request.Request('https://kubernetes.default.svc/api/v1/namespaces/' + location,
+        data=json.dumps(body).encode() if body else None,
+        headers={'Authorization': 'Bearer ' + (root / 'token').read_text().strip(),
+                 'Content-Type': 'application/merge-patch+json'}, method='PATCH' if body else 'GET')
+    opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPSHandler(
+        context=ssl.create_default_context(cafile=str(root / 'ca.crt'))))
+    try:
+        with opener.open(request, timeout=30) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        if legacy and error.code == 404:
+            return {}
+        raise
+
+
+def publish_chat(token):
+    request = urllib.request.Request('https://vault.vault.svc:8200/v1/secret/data/hub/saw-demo/mattermost',
+        data=json.dumps({'data': {'provider': 'mattermost', 'api_key': token}}).encode(), method='POST',
+        headers={'X-Vault-Token': Path('/vault-token/token').read_text().strip(), 'Content-Type': 'application/json'})
+    opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPSHandler(
+        context=ssl.create_default_context(cafile='/ca/service-ca.crt')))
+    with opener.open(request, timeout=30):
+        pass
+
+
+def setup_shared(args):
+    args.demo_id = 'rh1'
+    args.mailpit_url = 'http://mailpit.openshell-agents.svc.cluster.local:8025'
+    args.mattermost_url = 'http://mattermost.openshell-agents.svc.cluster.local:8065'
+    args.radicale_url = 'http://radicale.openshell-agents.svc.cluster.local:5232'
+    args.date = None
+    saved = kube_state()
+    data = saved.get('data', {})
+    if data.get('state'):
+        save_state(args.state, json.loads(base64.b64decode(data['state'])))
+    if args.action != 'seed':
+        run(args)
+        return
+    password = Path('/input/password').read_text().rstrip('\r\n')
+    if not password:
+        raise ValueError('shared demo password must not be empty')
+    # Adopt the previous branch's administrator instead of creating a new
+    # password for an account that may already exist in Mattermost.
+    previous = (kube_state(legacy=True).get('data', {}).get('state')
+                if not data.get('admin') else None)
+    encoded_admin = data.get('admin') or previous
+    admin = json.loads(base64.b64decode(encoded_admin)) if encoded_admin else {
+        'username': 'saw-lab-admin', 'password': secrets.token_urlsafe(32)}
+    if not data.get('admin'):
+        # Persist before account creation so a retried setup keeps its password.
+        saved = kube_state({'metadata': {'resourceVersion': saved['metadata']['resourceVersion']},
+                            'data': {'admin': base64.b64encode(json.dumps(admin).encode()).decode()}})
+    chat = Client(args.mattermost_url)
+    try:
+        body, headers = chat.request('POST', '/api/v4/users/login',
+                                    {'login_id': admin['username'], 'password': admin['password']})
+    except RuntimeError as error:
+        if not any(code in str(error) for code in ('HTTP 401', 'HTTP 404')):
+            raise
+        chat.json('POST', '/api/v4/users', {**admin, 'email': 'saw-lab-admin@example.test'})
+        body, headers = chat.request('POST', '/api/v4/users/login',
+                                    {'login_id': admin['username'], 'password': admin['password']})
+    if 'system_admin' not in json.loads(body).get('roles', '').split() or not headers.get('Token'):
+        raise RuntimeError('Shared demo administrator is unavailable')
+    os.environ['MATTERMOST_ADMIN_TOKEN'] = headers['Token']
+    os.environ['SAW_DEMO_PASSWORD'] = password
+    try:
+        run(args)
+        run(argparse.Namespace(**{**vars(args), 'action': 'verify'}))
+        state = json.loads(args.state.read_text())
+        publish_chat(state['mattermost_token'])
+    finally:
+        if args.state.exists():
+            kube_state({'metadata': {'resourceVersion': saved['metadata']['resourceVersion']},
+                        'data': {'state': base64.b64encode(args.state.read_bytes()).decode()}})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['seed', 'verify', 'challenge', 'reset'])
     parser.add_argument('--demo-id', default='rh1')
-    parser.add_argument('--username', default='', help='provisioned lab identity; uses its private team and calendar owner')
+    parser.add_argument('--in-cluster', action='store_true', help='prepare the shared lab sources and publish the chat provider to Vault')
     parser.add_argument('--mailpit-url', default='http://127.0.0.1:8025')
     parser.add_argument('--mattermost-url', default='http://127.0.0.1:8065')
     parser.add_argument('--radicale-url', default='http://127.0.0.1:5232')
@@ -316,10 +376,12 @@ def main():
     args = parser.parse_args()
     if not re.fullmatch('[a-z][a-z0-9-]{0,19}', args.demo_id):
         parser.error('demo-id must be a lowercase DNS label beginning with a letter (at most 20 characters)')
-    if args.username and not re.fullmatch('[a-z][a-z0-9-]{0,18}', args.username):
-        parser.error('username must be the provisioned lowercase lab identity (at most 19 characters)')
     try:
-        run(args)
+        if args.in_cluster:
+            args.state = Path('/work/state.json')
+            setup_shared(args)
+        else:
+            run(args)
     except (ValueError, KeyError, OSError, RuntimeError) as error:
         print('Demo data error: ' + str(error), file=sys.stderr)
         return 1

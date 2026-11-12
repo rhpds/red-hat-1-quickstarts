@@ -1,3 +1,6 @@
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" .Values.postgresImage) }}
+{{- fail "postgresImage must be pinned by digest" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

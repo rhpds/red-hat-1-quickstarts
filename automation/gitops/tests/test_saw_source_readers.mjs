@@ -6,8 +6,8 @@ import { join } from "node:path";
 
 import { createSourceTools } from "../tenant/saw/charts/saw-bom/harness/demo-assistant/mcp/source-tools.mjs";
 
-const config = { clusterDomain: "test.example", demoId: "rh1", tenantUser: "rh1" };
-function tools(read, env = { MAILPIT_AUTHORIZATION: "mail-marker", CALENDAR_AUTHORIZATION: "cal-marker" }) {
+const config = { clusterDomain: "test.example", demoId: "rh1" };
+function tools(read, env = {}) {
   return createSourceTools(config, { read, env });
 }
 const result = async (tool, args = {}) => tool.run(args);
@@ -32,7 +32,7 @@ test("email reads only assigned subjects, follows pagination, and fetches bodies
 
 test("calendar returns the assigned collection's ICS without guessing dates", async () => {
   const list = tools(async (url, options) => {
-    assert.equal(new URL(url).pathname, "/rh1/rh1/");
+    assert.equal(new URL(url).pathname, "/demo/rh1/");
     assert.equal(options.format, "text");
     return "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20261113T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR";
   });
@@ -46,7 +46,7 @@ test("model arguments cannot override the host, method, channel or credentials",
 });
 
 test("configuration rejects URL and path injection", async () => {
-  for (const patch of [{ clusterDomain: "test.example/collect" }, { demoId: "../other" }, { tenantUser: "../other" }]) {
+  for (const patch of [{ clusterDomain: "test.example/collect" }, { demoId: "../other" }, { demoId: "UPPERCASE" }]) {
     assert.throws(() => createSourceTools({ ...config, ...patch }), /source-reader configuration/);
   }
 });
@@ -89,62 +89,24 @@ test("upload request has one fixed destination and cannot supply credentials or 
 });
 
 
-test("tenant readers authenticate fixed sources and resolve only the assigned private team", async () => {
-  const tenant = { ...config, demoId: "user-test", tenantUser: "user-test", channelId: undefined };
+test("shared chat resolves only the demo team and uses a provider placeholder", async () => {
   const calls = [];
-  // A migrated provider may retain its old alias alongside the canonical key.
-  const list = createSourceTools(tenant, { env: { MM_TOKEN: "chat-marker", MATTERMOST_TOKEN: "stale-chat-marker", MAILPIT_AUTHORIZATION: "mail-marker", CALENDAR_AUTHORIZATION: "cal-marker" },
-    read: async (url, options) => {
+  const list = createSourceTools(config, { env: { MM_TOKEN: "chat-marker", MATTERMOST_TOKEN: "stale-marker" },
+    read: async (url, options = {}) => {
       calls.push(url);
       const u = new URL(url);
-      if (u.hostname.startsWith("mailpit")) {
-        assert.equal(options.headers.Authorization, "mail-marker");
-        return { messages: [], total: 0 };
-      }
-      if (u.hostname.startsWith("radicale")) {
-        assert.equal(u.pathname, "/user-test/user-test/");
-        assert.equal(options.headers.Authorization, "cal-marker");
-        return "BEGIN:VCALENDAR\r\nEND:VCALENDAR";
+      if (!u.hostname.startsWith("mattermost")) {
+        assert.equal(options.headers, undefined, "Synthetic email/calendar do not use lab passwords");
+        return u.hostname.startsWith("mailpit") ? { messages: [], total: 0 } : "BEGIN:VCALENDAR\r\nEND:VCALENDAR";
       }
       assert.equal(options.headers.Authorization, "Bearer chat-marker");
-      if (u.pathname === "/api/v4/users/me/teams") return [{ id: "team-id", name: "user-test", type: "I" }, { id: "other", name: "other", type: "I" }];
+      if (u.pathname === "/api/v4/users/me/teams") return [{ id: "team-id", name: "saw-rh1", type: "O" }, { id: "other", name: "other" }];
       if (u.pathname === "/api/v4/teams/team-id/channels/name/ai-platform") return { id: "a".repeat(26) };
       assert.equal(u.pathname, `/api/v4/channels/${"a".repeat(26)}/posts`);
       return { order: [], posts: {} };
     } });
   for (const t of list.slice(0,3)) await result(t);
   assert.equal(calls.length, 5);
-  const denied = createSourceTools(tenant, { env: {} });
-  await assert.rejects(() => result(denied[0]), /provider placeholder/);
-  await assert.rejects(() => result(denied[2]), /provider placeholder/);
-  const wrongTeam = createSourceTools(tenant, { env: { MATTERMOST_TOKEN: "marker" }, read: async () => [{id: "other", name:"other", type:"I"}] });
-  await assert.rejects(() => result(wrongTeam[1]), /assigned private team/);
-});
-
-test("parallel source tools serialize requests to avoid overlapping Keycloak password grants", async () => {
-  let active = false;
-  const list = createSourceTools({ ...config, demoId: "user-test", tenantUser: "user-test" }, {
-    env: { MAILPIT_AUTHORIZATION: "mail-marker", CALENDAR_AUTHORIZATION: "cal-marker" },
-    read: async url => {
-      assert.equal(active, false, "The identity server rejects concurrent password grants for one user");
-      active = true;
-      await new Promise(resolve => setImmediate(resolve));
-      active = false;
-      return new URL(url).hostname.startsWith("mailpit")
-        ? { messages: [], total: 0 } : "BEGIN:VCALENDAR\r\nEND:VCALENDAR";
-    },
-  });
-  const data = await Promise.all([result(list[0]), result(list[2])]);
-  assert.deepEqual(data.map(item => item.source), ["email", "calendar"]);
-});
-
-test("a rejected source request does not prevent the next queued source from running", async () => {
-  const list = tools(async url => {
-    if (new URL(url).hostname.startsWith("mailpit")) throw new Error("identity unavailable");
-    return "BEGIN:VCALENDAR\r\nEND:VCALENDAR";
-  });
-  const data = await Promise.allSettled([result(list[0]), result(list[2])]);
-  assert.equal(data[0].status, "rejected");
-  assert.equal(data[1].status, "fulfilled");
-  assert.equal(data[1].value.source, "calendar");
+  const wrongTeam = createSourceTools(config, { env: { MM_TOKEN: "marker" }, read: async () => [{id: "other", name:"other"}] });
+  await assert.rejects(() => result(wrongTeam[1]), /demo team/);
 });
