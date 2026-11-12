@@ -419,7 +419,7 @@ test("the audit line carries the user and task and not the raw credential", () =
 
 test("only the listed read-only tools are allowed", () => {
   for (const toolName of ["read", "memory_search", "memory_get", "session_status",
-    "sessions_list", "sessions_history", "mailpit-reader__saw_read_email", "mattermost-reader__saw_read_chat", "calendar-reader__saw_read_calendar"]) {
+    "sessions_list", "sessions_history", "mailpit_reader__saw_read_email", "mattermost_reader__saw_read_chat", "calendar_reader__saw_read_calendar"]) {
     assert.equal(call({ toolName, params: {} }).effect.kind, "allow", toolName);
   }
   for (const toolName of ["web_fetch", "web_search", "write", "edit", "browser", "cron",
@@ -485,8 +485,8 @@ test("an unavailable audit file blocks an otherwise allowed call", () => {
 });
 
 test("the report writer is allowed but a source-induced upload stays denied by default", () => {
-  assert.equal(call({toolName: "demo-notes__saw_save_report", params: {content: "synthetic report"}}).effect.kind, "allow");
-  const upload = call({toolName: "demo-notes__saw_upload_summary", params: {content: "synthetic briefing"}});
+  assert.equal(call({toolName: "demo_notes__saw_save_report", params: {content: "synthetic report"}}).effect.kind, "allow");
+  const upload = call({toolName: "demo_notes__saw_upload_summary", params: {content: "synthetic briefing"}});
   assert.equal(upload.effect.kind, "deny");
   assert.equal(upload.record.rule, "default");
   assert.equal(hookResult(upload, () => {}).block, true);

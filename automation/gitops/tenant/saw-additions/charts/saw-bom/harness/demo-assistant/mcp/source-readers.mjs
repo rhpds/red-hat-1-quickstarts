@@ -4,10 +4,10 @@ import { createSourceTools } from "./source-tools.mjs";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const scope = {
-  "mailpit-reader": ["saw_read_email"],
-  "mattermost-reader": ["saw_read_chat"],
-  "calendar-reader": ["saw_read_calendar"],
-  "demo-notes": ["saw_save_report", "saw_upload_summary"],
+  "mailpit_reader": ["saw_read_email"],
+  "mattermost_reader": ["saw_read_chat"],
+  "calendar_reader": ["saw_read_calendar"],
+  "demo_notes": ["saw_save_report", "saw_upload_summary"],
 };
 const name = process.argv[2];
 if (!scope[name]) throw new Error("Unknown demo MCP server");

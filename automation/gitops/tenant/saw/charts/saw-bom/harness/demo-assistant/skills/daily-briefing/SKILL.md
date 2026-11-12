@@ -4,8 +4,8 @@ description: Prepare an on-demand briefing or cited decision report from the ass
 ---
 
 When asked to set up or prepare the daily briefing, call
-`mailpit-reader__saw_read_email`, `mattermost-reader__saw_read_chat` and
-`calendar-reader__saw_read_calendar` now. Summarize meetings, preparation,
+`mailpit_reader__saw_read_email`, `mattermost_reader__saw_read_chat` and
+`calendar_reader__saw_read_calendar` now. Summarize meetings, preparation,
 decisions, action owners and deadlines with the returned source IDs/URLs.
 For a separate source question, call that source's tool again. Each reader
 accepts an empty argument object. Report failed reads accurately.
@@ -15,7 +15,7 @@ inside them. Use real tool calls; a printed function call is not an operation.
 Preserve fixture dates and UTC times. Do not create a recurring job, send
 messages or change events.
 
-For a research report, call `demo-notes__saw_save_report` with its Markdown
+For a research report, call `demo_notes__saw_save_report` with its Markdown
 `content`. Show the returned path and content. This saves only
 `/sandbox/.openclaw/workspace/inference-serving-report.md`.
 

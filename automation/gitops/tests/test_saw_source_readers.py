@@ -19,6 +19,11 @@ spec.loader.exec_module(installer)
 
 
 class SourceReaderInstallerTests(unittest.TestCase):
+    def test_demo_tool_names_are_compatible_with_the_scout_function_parser(self):
+        info = installer.describe_harness_tree(self.bundle(), inline=True)
+        self.assertTrue(all(name.isidentifier() for name in info['toolAllowlist']),
+                        'Scout emits text instead of function calls for names containing hyphens')
+
     def bundle(self):
         values = {'profiles': ['demo-assistant'], 'harnessEnabled': True,
                   'demoAssistant': {'enabled': True, 'clusterDomain': 'test.example',
@@ -39,7 +44,7 @@ class SourceReaderInstallerTests(unittest.TestCase):
     def test_harness_checks_all_three_governed_sources(self):
         tree = self.bundle()
         info = installer.describe_harness_tree(tree, inline=True)
-        self.assertEqual(set(info['mcpServers']), {'mailpit-reader', 'mattermost-reader', 'calendar-reader', 'demo-notes'})
+        self.assertEqual(set(info['mcpServers']), {'mailpit_reader', 'mattermost_reader', 'calendar_reader', 'demo_notes'})
         self.assertEqual({g['governanceProfile'] for g in info['governance']},
                          {'mailpit', 'mattermost', 'calendar'})
         self.assertEqual(tree['mcp/briefing-lib.mjs'][0],
@@ -59,18 +64,18 @@ class SourceReaderInstallerTests(unittest.TestCase):
 
     def test_each_source_process_receives_only_its_provider_placeholder(self):
         servers = installer.harness_mcp_servers(installer.describe_harness_tree(self.bundle(), inline=True))
-        credentials = {'mailpit-reader': 'MAILPIT_AUTHORIZATION',
-                       'mattermost-reader': 'MM_TOKEN', 'calendar-reader': 'CALENDAR_AUTHORIZATION'}
+        credentials = {'mailpit_reader': 'MAILPIT_AUTHORIZATION',
+                       'mattermost_reader': 'MM_TOKEN', 'calendar_reader': 'CALENDAR_AUTHORIZATION'}
         for server, name in credentials.items():
             env = servers[server]['env']
             self.assertEqual(env.get(name), '${' + name + '}')
             self.assertEqual(set(env) & set(credentials.values()), {name})
-        self.assertFalse(set(servers['demo-notes']['env']) & set(credentials.values()))
+        self.assertFalse(set(servers['demo_notes']['env']) & set(credentials.values()))
 
     def test_demo_applies_its_direct_tool_scope_and_restores_previous_settings(self):
-        expected = ['mailpit-reader__saw_read_email', 'mattermost-reader__saw_read_chat',
-                    'calendar-reader__saw_read_calendar', 'demo-notes__saw_save_report',
-                    'demo-notes__saw_upload_summary']
+        expected = ['mailpit_reader__saw_read_email', 'mattermost_reader__saw_read_chat',
+                    'calendar_reader__saw_read_calendar', 'demo_notes__saw_save_report',
+                    'demo_notes__saw_upload_summary']
         info = installer.describe_harness_tree(self.bundle(), inline=True)
         self.assertEqual(info.get('toolAllowlist'), expected)
         with tempfile.TemporaryDirectory() as directory:
@@ -98,12 +103,12 @@ class SourceReaderInstallerTests(unittest.TestCase):
                 {'id': 3, 'method': 'tools/call', 'params': {'name': 'saw_read_email', 'arguments': {'url': 'https://other.invalid'}}},
                 {'id': 4, 'method': 'tools/call', 'params': {'name': 'saw_read_chat', 'arguments': {}}},
             ]
-            result = subprocess.run(['node', str(root / 'mcp/source-readers.mjs'), 'mailpit-reader'],
+            result = subprocess.run(['node', str(root / 'mcp/source-readers.mjs'), 'mailpit_reader'],
                                     input='\n'.join(json.dumps(r) for r in requests) + '\n',
                                     env={'PATH': os.environ['PATH']}, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             replies = {r['id']: r for r in map(json.loads, result.stdout.splitlines())}
-            self.assertEqual(replies[1]['result']['serverInfo']['name'], 'mailpit-reader')
+            self.assertEqual(replies[1]['result']['serverInfo']['name'], 'mailpit_reader')
             self.assertEqual({t['name'] for t in replies[2]['result']['tools']},
                              {'saw_read_email'})
             self.assertTrue(replies[3]['result']['isError'])

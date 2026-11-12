@@ -2,7 +2,7 @@
   {
     "file": "charts/governance-policy/tool-actions.yaml",
     "old": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n",
-    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: mailpit-reader__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: mattermost-reader__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: calendar-reader__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo-notes__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
+    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: mailpit_reader__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: mattermost_reader__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: calendar_reader__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo_notes__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
   },
   {
     "file": "charts/openshell-keycloak/files/owner-resolver.py",
@@ -87,7 +87,7 @@
   {
     "file": "charts/openshell-saw/files/installer/tool-actions.yaml",
     "old": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n",
-    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: mailpit-reader__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: mattermost-reader__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: calendar-reader__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo-notes__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
+    "new": "  - id: briefing-save\n    tool: briefing-writer__save_briefing\n    action: allow\n  - id: saw-demo-email\n    tool: mailpit_reader__saw_read_email\n    action: allow\n  - id: saw-demo-chat\n    tool: mattermost_reader__saw_read_chat\n    action: allow\n  - id: saw-demo-calendar\n    tool: calendar_reader__saw_read_calendar\n    action: allow\n  - id: saw-demo-report\n    tool: demo_notes__saw_save_report\n    action: allow\n  - id: read\n    tool: read\n    action: allow\n"
   },
   {
     "file": "charts/openshell-saw/files/installer/tool-gate.test.mjs",
@@ -97,12 +97,12 @@
   {
     "file": "charts/openshell-saw/files/installer/tool-gate.test.mjs",
     "old": "\ntest(\"only the listed read-only tools are allowed\", () => {\n  for (const toolName of [\"read\", \"memory_search\", \"memory_get\", \"session_status\",\n    \"sessions_list\", \"sessions_history\"]) {\n    assert.equal(call({ toolName, params: {} }).effect.kind, \"allow\", toolName);\n  }\n  for (const toolName of [\"web_fetch\", \"web_search\", \"write\", \"edit\", \"browser\", \"cron\",\n",
-    "new": "\ntest(\"only the listed read-only tools are allowed\", () => {\n  for (const toolName of [\"read\", \"memory_search\", \"memory_get\", \"session_status\",\n    \"sessions_list\", \"sessions_history\", \"mailpit-reader__saw_read_email\", \"mattermost-reader__saw_read_chat\", \"calendar-reader__saw_read_calendar\"]) {\n    assert.equal(call({ toolName, params: {} }).effect.kind, \"allow\", toolName);\n  }\n  for (const toolName of [\"web_fetch\", \"web_search\", \"write\", \"edit\", \"browser\", \"cron\",\n"
+    "new": "\ntest(\"only the listed read-only tools are allowed\", () => {\n  for (const toolName of [\"read\", \"memory_search\", \"memory_get\", \"session_status\",\n    \"sessions_list\", \"sessions_history\", \"mailpit_reader__saw_read_email\", \"mattermost_reader__saw_read_chat\", \"calendar_reader__saw_read_calendar\"]) {\n    assert.equal(call({ toolName, params: {} }).effect.kind, \"allow\", toolName);\n  }\n  for (const toolName of [\"web_fetch\", \"web_search\", \"write\", \"edit\", \"browser\", \"cron\",\n"
   },
   {
     "file": "charts/openshell-saw/files/installer/tool-gate.test.mjs",
     "old": "  assert.equal(result.record.rule, \"audit-unwritable\");\n  assert.equal(result.hook.block, true);\n});\n",
-    "new": "  assert.equal(result.record.rule, \"audit-unwritable\");\n  assert.equal(result.hook.block, true);\n});\n\ntest(\"the report writer is allowed but a source-induced upload stays denied by default\", () => {\n  assert.equal(call({toolName: \"demo-notes__saw_save_report\", params: {content: \"synthetic report\"}}).effect.kind, \"allow\");\n  const upload = call({toolName: \"demo-notes__saw_upload_summary\", params: {content: \"synthetic briefing\"}});\n  assert.equal(upload.effect.kind, \"deny\");\n  assert.equal(upload.record.rule, \"default\");\n  assert.equal(hookResult(upload, () => {}).block, true);\n});\n"
+    "new": "  assert.equal(result.record.rule, \"audit-unwritable\");\n  assert.equal(result.hook.block, true);\n});\n\ntest(\"the report writer is allowed but a source-induced upload stays denied by default\", () => {\n  assert.equal(call({toolName: \"demo_notes__saw_save_report\", params: {content: \"synthetic report\"}}).effect.kind, \"allow\");\n  const upload = call({toolName: \"demo_notes__saw_upload_summary\", params: {content: \"synthetic briefing\"}});\n  assert.equal(upload.effect.kind, \"deny\");\n  assert.equal(upload.record.rule, \"default\");\n  assert.equal(hookResult(upload, () => {}).block, true);\n});\n"
   },
   {
     "file": "charts/openshell-saw/templates/credential-proxy.yaml",

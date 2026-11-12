@@ -7,16 +7,16 @@ spec:
   version: 0.1.0
   plugins: []
   mcpServers:
-    - name: mailpit-reader
+    - name: mailpit_reader
       governanceProfile: mailpit
-    - name: mattermost-reader
+    - name: mattermost_reader
       governanceProfile: mattermost
-    - name: calendar-reader
+    - name: calendar_reader
       governanceProfile: calendar
-    - name: demo-notes
+    - name: demo_notes
   toolAllowlist:
-    - mailpit-reader__saw_read_email
-    - mattermost-reader__saw_read_chat
-    - calendar-reader__saw_read_calendar
-    - demo-notes__saw_save_report
-    - demo-notes__saw_upload_summary
+    - mailpit_reader__saw_read_email
+    - mattermost_reader__saw_read_chat
+    - calendar_reader__saw_read_calendar
+    - demo_notes__saw_save_report
+    - demo_notes__saw_upload_summary
