@@ -1,0 +1,30 @@
+# Mailpit in openshell-agents (mirrors the telemetry-proxy pattern): the
+# OpenClaw agent sends email via SMTP :1025 and the demo watches it arrive
+# in the web UI :8025. Auth-free, single container, ephemeral mail.
+enabled: true
+
+image: "axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48"
+imagePullPolicy: IfNotPresent
+
+# SMTP listener and HTTP UI/API ports (Mailpit defaults)
+smtpPort: 1025
+uiPort: 8025
+
+# Ephemeral for the demo: mail lives in an emptyDir and is lost on pod
+# restart. Set a size, or leave size empty to skip the volume entirely.
+storage:
+  size: 64Mi
+
+# Optional HTTPS edge Route for the demo UI/API; infrastructure demo opt-in
+# supplies its exact host. Standalone chart installs keep it disabled.
+route:
+  enabled: false
+  host: ""
+
+resources:
+  limits:
+    memory: 128Mi
+    cpu: 200m
+  requests:
+    memory: 32Mi
+    cpu: 10m

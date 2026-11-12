@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/validatedpatterns-sandbox/secure-agent-workspace.git",
+  "ref": "demo",
+  "local_changes": [
+    "Digest-pinned demo images",
+    "Standalone routes disabled by default; infrastructure opt-in enables HTTPS edge routes",
+    "Dedicated demo service account for Mattermost, PostgreSQL and Radicale",
+    "Disable fixed-date Radicale seeds; use seed-demo.py",
+    "Provision tenant-owned source accounts and fixtures with the existing lab identity",
+    "Chat reproduces the recording's visible 14-message excerpt with speaker labels and normalized apostrophes; unseen history is not reconstructed",
+    "Six email bodies are reconstructed from the recording's summaries/report as authorized; they are not original email exports",
+    "Calendar correlates the inference decision to the fixture date and the retrospective/security review to the next Wednesday",
+    "Seed one prepared unauthorized-upload message without the suffix marker or a separate bot; preserve unrelated source data during reseeding",
+    "Demo content lives in tenant/bootstrap/files/demo-data.json; the seed script resolves dates and populates the sources"
+  ],
+  "commit": "227fa5ea58666c9a01495163e41cd265abb349dd"
+}

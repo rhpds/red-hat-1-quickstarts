@@ -1,0 +1,143 @@
+{{- $saw := .Values.saw }}
+{{- $demo := $saw.demo | default dict }}
+{{- if and (eq (lower (toString $saw.enabled)) "true") (eq (lower (toString $demo.enabled)) "true") (eq (lower (toString $demo.provisioningEnabled)) "true") }}
+{{- if ne (lower (toString $demo.calendarEnabled)) "true" }}{{ fail "saw.demo.calendarEnabled is required for tenant provisioning" }}{{ end }}
+{{- $issuer := printf "https://openshell-keycloak-ingress-saw-keycloak.apps.%s/realms/openshell" $saw.clusterDomain }}
+{{- $image := "registry.access.redhat.com/ubi9/python-311@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saw-demo-access
+  namespace: openshell-agents
+data:
+  source-gateway.py: |
+{{ .Files.Get "files/source-gateway.py" | indent 4 }}
+  demo-admin.py: |
+{{ .Files.Get "files/demo-admin.py" | indent 4 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: saw-demo-admin
+  namespace: openshell-agents
+# The setup Job owns data.state; Git never contains generated credentials.
+type: Opaque
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: saw-demo-admin
+  namespace: openshell-agents
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: saw-demo-admin
+  namespace: openshell-agents
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [saw-demo-admin]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: saw-demo-admin
+  namespace: openshell-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: saw-demo-admin}
+subjects:
+  - {kind: ServiceAccount, name: saw-demo-admin, namespace: openshell-agents}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: saw-demo-admin
+  namespace: openshell-agents
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: saw-demo-admin
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: admin
+          image: {{ $image }}
+          command: [python, /scripts/demo-admin.py]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+      volumes:
+        - name: scripts
+          configMap: {name: saw-demo-access}
+{{- range $source := list "mailpit" "radicale" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saw-demo-{{ $source }}-access
+  namespace: openshell-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {saw-demo-access: {{ $source }}}
+  template:
+    metadata:
+      labels: {saw-demo-access: {{ $source }}}
+      annotations:
+        checksum/source-gateway: {{ $.Files.Get "files/source-gateway.py" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: access
+          image: {{ $image }}
+          command: [python, /scripts/source-gateway.py]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          env:
+            - {name: SOURCE_KIND, value: {{ ternary "mailpit" "calendar" (eq $source "mailpit") | quote }}}
+            - {name: SOURCE_UPSTREAM, value: {{ printf "http://%s.openshell-agents.svc.cluster.local:%s" $source (ternary "8025" "5232" (eq $source "mailpit")) | quote }}}
+            - {name: OIDC_ISSUER, value: {{ $demo.oidcIssuer | default $issuer | quote }}}
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 250m, memory: 128Mi}}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+      volumes:
+        - name: scripts
+          configMap: {name: saw-demo-access}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saw-demo-{{ $source }}-access
+  namespace: openshell-agents
+spec:
+  selector: {saw-demo-access: {{ $source }}}
+  ports:
+    - {name: {{ ternary "ui" "cal" (eq $source "mailpit") }}, port: 8080, targetPort: http}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: saw-demo-{{ $source }}-backend
+  namespace: openshell-agents
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: {{ $source }}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {saw-demo-access: {{ $source }}}
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: vault}
+          podSelector:
+            matchLabels: {saw-demo-seed: "true"}
+      ports: [{protocol: TCP, port: {{ ternary 8025 5232 (eq $source "mailpit") }}}]
+{{- end }}
+{{- end }}

@@ -1,0 +1,23 @@
+{{- if .Values.route.enabled }}
+# HTTPS endpoint for the governed API and the demo UI.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: radicale-ui
+  labels:
+    app.kubernetes.io/name: radicale
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.route.serviceName | default "radicale" | quote }}
+    weight: 100
+  port:
+    targetPort: cal
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}

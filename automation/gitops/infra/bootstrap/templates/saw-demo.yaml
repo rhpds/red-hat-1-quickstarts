@@ -1,0 +1,64 @@
+{{- $saw := .Values.saw }}
+{{- if and (eq (lower (toString $saw.enabled)) "true") (eq (lower (toString ($saw.demo | default dict).enabled)) "true") }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: saw-demo
+  namespace: openshell-agents
+automountServiceAccountToken: false
+---
+# The upstream Mattermost/Postgres and Radicale images use fixed UIDs.
+# Scope the exception to this account, never the namespace's default account.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: saw-demo-anyuid
+  namespace: openshell-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+  - kind: ServiceAccount
+    name: saw-demo
+    namespace: openshell-agents
+{{- range $name := list "mailpit" "mattermost" "radicale" }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: saw-demo-{{ $name }}
+  namespace: {{ $saw.gitopsNamespace | quote }}
+spec:
+  project: default
+  source:
+    repoURL: {{ $saw.git.url | quote }}
+    targetRevision: {{ $saw.git.revision | quote }}
+    path: automation/gitops/saw-demo/charts/{{ $name }}
+    helm:
+      releaseName: saw-demo-{{ $name }}
+      values: |
+        route:
+          enabled: true
+          {{- if and (eq (lower (toString (($saw.demo | default dict).provisioningEnabled))) "true") (ne $name "mattermost") }}
+          serviceName: saw-demo-{{ $name }}-access
+          {{- end }}
+          host: {{ printf "%s-ui-openshell-agents.apps.%s" $name (required "saw.clusterDomain is required for demo HTTPS routes" $saw.clusterDomain) | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshell-agents
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 20
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}
+{{- end }}

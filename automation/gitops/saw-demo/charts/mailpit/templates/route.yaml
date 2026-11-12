@@ -1,0 +1,23 @@
+{{- if .Values.route.enabled }}
+# HTTPS endpoint for the governed API and the demo UI. SMTP is never routed.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mailpit-ui
+  labels:
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.route.serviceName | default "mailpit" | quote }}
+    weight: 100
+  port:
+    targetPort: ui
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}

@@ -1,0 +1,23 @@
+{{- if .Values.route.enabled }}
+# HTTPS endpoint for the governed API and the demo UI.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mattermost-ui
+  labels:
+    app.kubernetes.io/name: mattermost
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: mattermost
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}

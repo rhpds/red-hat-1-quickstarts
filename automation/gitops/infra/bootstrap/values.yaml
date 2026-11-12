@@ -28,6 +28,13 @@ saw:
     revision: main
   gitopsNamespace: openshift-gitops
   clusterDomain: ""
+  # Shared synthetic demo services in openshell-agents. Enable all three
+  # flags for authenticated, automatically populated tenant sources.
+  demo:
+    enabled: false
+    calendarEnabled: false
+    provisioningEnabled: false
+    oidcIssuer: ""
   keycloak:
     postgresPassword: ""
     values: {}
