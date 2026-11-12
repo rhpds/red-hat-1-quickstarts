@@ -98,10 +98,9 @@ rhdh:
 portal:
   # Owner-visible catalog links for independently GitOps-managed workspaces.
   linkedWorkspaces: []
-  # Administrator-owned request allowlist. Non-VM provisioning remains unavailable
-  # until its lifecycle/readiness adapter is implemented; this is not an enablement
-  # switch for an incomplete runtime. Existing workspace mode is immutable.
-  deploymentModes: [vm]
+  # Container is available only for owners listed in containerSites with a
+  # complete, reviewed site configuration. Existing workspace mode is immutable.
+  deploymentModes: [vm, container]
   containerSites: {} # Administrator-owned, keyed by login; empty denies all container requests.
   namespace: saw-portal
   provisionerServiceAccount: saw-portal-provisioner
