@@ -154,61 +154,121 @@ class DemoProvisioningTests(unittest.TestCase):
     def tenant_values(self):
         return {'rag': None, 'saw': {'enabled': True, 'userName': 'user-test', 'clusterDomain': 'test.example',
                 'credentialProxyImage': 'example.invalid/proxy@sha256:' + 'a' * 64, 'vmSource': {'dataSource': 'golden'},
+                'account': {'enabled': True, 'password': 'ProvisionedPassword123!'},
                 'inferenceSeed': {'enabled': True, 'secretData': {'api_key': 'synthetic-key', 'url': 'https://model.example/v1', 'model': 'existing-model'}},
                 'inferenceHost': 'model.example', 'demo': {'enabled': True, 'provisioningEnabled': True}}}
 
-    def test_setup_is_one_shared_infra_job_without_identity_gateways(self):
-        docs = render('infra/bootstrap', {'saw': {'enabled': True, 'clusterDomain': 'test.example',
-                      'keycloak': {'postgresPassword': 'example-only'},
-                      'demo': {'enabled': True, 'calendarEnabled': True, 'provisioningEnabled': True}}})
-        jobs = [d for d in docs if d['kind'] == 'Job' and d['metadata']['name'].startswith('saw-demo')]
-        self.assertEqual([d['metadata']['name'] for d in jobs], ['saw-demo-seed'])
-        pod = jobs[0]['spec']['template']['spec']
-        self.assertEqual(jobs[0]['metadata']['namespace'], 'vault')
-        self.assertEqual(pod['containers'][0]['command'], ['python', '/scripts/seed-demo.py', 'seed', '--in-cluster'])
-        self.assertTrue(any(v.get('secret', {}).get('secretName') == 'saw-demo-password' for v in pod['volumes']))
-        self.assertFalse(any(d['kind'] == 'Deployment' and 'access' in d['metadata']['name'] for d in docs))
-        for policy in [d for d in docs if d['kind'] == 'NetworkPolicy' and d['metadata']['name'].startswith('saw-demo-')]:
-            peers = policy['spec']['ingress'][0]['from']
-            self.assertIn({'namespaceSelector': {'matchLabels': {'policy-group.network.openshift.io/ingress': ''}}}, peers)
-            self.assertIn({'namespaceSelector': {'matchLabels': {'policy-group.network.openshift.io/host-network': ''}}}, peers)
-        profiles = next(d['data'] for d in docs if d['metadata']['name'] == 'governance-interceptor-extra-profiles')
-        for source in ['mailpit', 'calendar']:
-            profile = yaml.safe_load(profiles[source + '.yaml'])
-            self.assertFalse(profile.get('credentials'))
-            self.assertTrue(all(e['access'] == 'read-only' and e['port'] == 443 for e in profile['endpoints']))
-        for app in [d for d in docs if d['kind'] == 'Application' and d['metadata']['name'].startswith('saw-demo-')]:
-            values = yaml.safe_load(app['spec']['source']['helm']['values'])
-            chart = ROOT.parents[1] / app['spec']['source']['path']
-            route = next(d for d in render(chart, values) if d['kind'] == 'Route')
-            self.assertNotIn('-access', route['spec']['to']['name'])
-
-    def test_tenants_keep_private_inference_and_share_only_demo_chat_credentials(self):
+    def test_tenant_job_uses_provisioned_identity_and_secret_mount(self):
         docs = render('tenant/bootstrap', self.tenant_values())
-        self.assertFalse(any(d['kind'] == 'Job' and 'demo' in d['metadata']['name'] for d in docs))
+        job = next((d for d in docs if d['kind'] == 'Job' and d['metadata']['name'] == 'saw-user-test-demo-seed'), None)
+        self.assertIsNotNone(job, 'tenant demo seed Job must be rendered')
+        self.assertEqual(job['metadata']['namespace'], 'vault')
+        pod = job['spec']['template']['spec']
+        container = pod['containers'][0]
+        self.assertIn({'name': 'SAW_USER', 'value': 'user-test'}, container['env'])
+        self.assertNotIn('ProvisionedPassword123!', str(container))
+        self.assertTrue(any(v.get('secret', {}).get('secretName') == 'saw-user-test-demo-input' for v in pod['volumes']))
+        self.assertEqual(job['metadata']['annotations']['argocd.argoproj.io/hook'], 'Sync')
+        rules = next(d['rules'] for d in docs if d['kind'] == 'Role' and d['metadata']['name'] == 'saw-user-test-demo-seed')
+        self.assertTrue(all(r.get('resourceNames') for r in rules))
+
+    def test_two_tenants_keep_their_lab_passwords_and_source_credentials_separate(self):
+        for user in ['user-first', 'user-second']:
+            values = self.tenant_values()
+            values['saw']['userName'] = user
+            values['saw']['account']['password'] = user + '-existing-password'
+            docs = render('tenant/bootstrap', values)
+            account = next(d for d in docs if d['kind'] == 'Secret' and d['metadata']['name'] == f'saw-{user}-account')
+            source = next(d for d in docs if d['kind'] == 'Secret' and d['metadata']['name'] == f'saw-{user}-demo-input')
+            self.assertEqual(source['stringData']['password'], account['stringData']['password'])
+            app = next(d for d in docs if d['kind'] == 'Application')
+            child = render('tenant/saw/charts/saw-users', yaml.safe_load(app['spec']['source']['helm']['values']))
+            secret_app = next(d for d in child if d['kind'] == 'Application' and d['spec']['source']['path'].endswith('/pattern-secrets'))
+            secrets = render('tenant/saw/charts/pattern-secrets', yaml.safe_load(secret_app['spec']['source']['helm']['values']))
+            for provider in ['inference', 'mailpit', 'mattermost', 'calendar']:
+                secret = next(d for d in secrets if d['metadata']['name'] == provider)
+                self.assertEqual(secret['spec']['dataFrom'][0]['extract']['key'], f'secret/data/hub/saw-{user}/{provider}')
+
+    def test_generated_bom_and_proxy_attach_all_sources_without_manual_channel_id(self):
+        docs = render('tenant/bootstrap', self.tenant_values())
         app = next(d for d in docs if d['kind'] == 'Application')
         values = yaml.safe_load(app['spec']['source']['helm']['values'])
         self.assertEqual(values['defaults']['profiles'], ['demo-assistant'])
-        self.assertEqual(values['defaults']['openshellSaw']['sourceReaders']['demoId'], 'rh1')
+        self.assertEqual(values['defaults']['openshellSaw']['sourceReaders']['tenantUser'], 'user-test')
+        self.assertTrue(values['defaults']['openshellSaw']['sourceReaders']['enabled'])
         child = render('tenant/saw/charts/saw-users', values)
-        settings = {d['spec']['source']['path'].rsplit('/', 1)[-1]: yaml.safe_load(d['spec']['source']['helm']['values'])
-                    for d in child if d['kind'] == 'Application'}
-        self.assertEqual(set(settings['pattern-secrets']['secrets']), {'inference', 'mattermost'})
-        secrets = render('tenant/saw/charts/pattern-secrets', settings['pattern-secrets'])
-        for name in ['mattermost', 'mattermost-meta']:
-            secret = next(d for d in secrets if d['metadata']['name'] == name)
-            self.assertEqual(secret['spec']['dataFrom'][0]['extract']['key'], 'secret/data/hub/saw-demo/mattermost')
-        inference = next(d for d in secrets if d['metadata']['name'] == 'inference')
-        self.assertEqual(inference['spec']['dataFrom'][0]['extract']['key'], 'secret/data/hub/saw-user-test/inference')
+        settings = {
+            d['spec']['source']['path'].rsplit('/', 1)[-1]: yaml.safe_load(d['spec']['source']['helm']['values'])
+            for d in child
+            if d['kind'] == 'Application'
+        }
+        self.assertEqual(
+            set(settings['pattern-secrets']['secrets']), {'inference', 'mailpit', 'calendar', 'mattermost'}
+        )
+        bindings = settings['openshell-saw']['credentialProxy']['secrets']
+        for source in ['mailpit', 'calendar', 'mattermost']:
+            self.assertIn({'name': source, 'key': 'api_key', 'providers': [source]}, bindings)
         machine = render('tenant/saw/charts/openshell-saw', settings['openshell-saw'])
-        proxy = next(d for d in machine if d['kind'] == 'ConfigMap' and d['metadata']['name'].endswith('-credential-proxy-config'))
+        proxy = next(
+            d
+            for d in machine
+            if d['kind'] == 'ConfigMap' and d['metadata']['name'].endswith('-credential-proxy-config')
+        )
         policy = json.loads(proxy['data']['config.json'])
-        self.assertEqual(policy['profiles']['mattermost'], ['mattermost-ui-openshell-agents.apps.test.example'])
-        self.assertEqual({b['secret'] for b in policy['bindings']}, {'inference', 'mattermost'})
+        for source, service in [('mailpit', 'mailpit'), ('mattermost', 'mattermost'), ('calendar', 'radicale')]:
+            self.assertEqual(policy['profiles'].get(source), [service + '-ui-openshell-agents.apps.test.example'])
+        bad = dict(settings['openshell-saw'])
+        bad['egress'] = {'extraAllow': ['model.example']}
+        denied = subprocess.run(
+            ['helm', 'template', 'test', str(ROOT / 'tenant/saw/charts/openshell-saw'), '-f', '-'],
+            input=yaml.safe_dump(bad),
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertIn('demo credential hosts must also be allowed', denied.stderr)
         bom = render('tenant/saw/charts/saw-bom', settings['saw-bom'])
         data = next(d['data'] for d in bom if d['kind'] == 'ConfigMap')
-        providers = yaml.safe_load(next(v for k,v in data.items() if k.endswith('providers.yaml')))['spec']['providers']
-        self.assertEqual({p['name'] for p in providers if p.get('credentialFree')}, {'mailpit', 'calendar'})
+        providers = yaml.safe_load(next(v for k, v in data.items() if k.endswith('providers.yaml')))['spec'][
+            'providers'
+        ]
+        self.assertEqual({p['name'] for p in providers}, {'custom-inference', 'mailpit', 'mattermost', 'calendar'})
+        sandbox = yaml.safe_load(next(v for k, v in data.items() if k.endswith('sandbox.yaml')))['spec']['sandboxes'][0]
+        self.assertTrue({'mailpit', 'mattermost', 'calendar'} <= set(sandbox['providers']))
+        self.assertEqual(sandbox.get('harnessRef', {}).get('name'), 'demo-assistant')
+        self.assertTrue(settings['openshell-saw']['allowDriverConfig'])
+        self.assertIn('harness-index.yaml', data)
+
+    def test_infra_authenticated_routes_and_readonly_profiles_have_no_backend_bypass(self):
+        values = {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'example-only'},
+                          'demo': {'enabled': True, 'calendarEnabled': True, 'provisioningEnabled': True}}}
+        docs = render('infra/bootstrap', values)
+        names = {(d['kind'],d['metadata']['name']):d for d in docs}
+        self.assertIn(('Job','saw-demo-admin'), names)
+        ca = names.get(('ExternalSecret', 'saw-demo-ingress-ca'))
+        self.assertIsNotNone(ca, 'gateway must reuse the ingress CA stored in Vault')
+        self.assertEqual(ca['spec']['data'][0]['remoteRef']['key'], 'secret/data/hub/cluster-ingress-ca')
+        for service in ['mailpit', 'radicale']:
+            app = names['Application', 'saw-demo-' + service]
+            child_values = yaml.safe_load(app['spec']['source']['helm']['values'])
+            chart = ROOT.parents[1] / app['spec']['source']['path']
+            route = next(d for d in render(chart, child_values) if d['kind'] == 'Route')
+            self.assertEqual(route['spec']['to']['name'], 'saw-demo-' + service + '-access')
+            self.assertIn(('NetworkPolicy','saw-demo-' + service + '-backend'), names)
+        profiles = names['ConfigMap','governance-interceptor-extra-profiles']['data']
+        for source in ['mailpit','calendar']:
+            profile = yaml.safe_load(profiles[source + '.yaml'])
+            self.assertEqual(profile['credentials'][0]['auth_style'], 'header')
+            self.assertEqual(profile['credentials'][0]['header_name'], 'authorization')
+            self.assertEqual(len(profile['endpoints']),1)
+            self.assertEqual(profile['endpoints'][0]['access'], 'read-only')
+
+    def test_provisioning_requires_the_existing_lab_account(self):
+        values = self.tenant_values()
+        values['saw']['account']['enabled'] = False
+        result = subprocess.run(['helm','template','test',str(ROOT/'tenant/bootstrap'),'-f','-'],input=yaml.safe_dump(values),text=True,capture_output=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('saw.account.enabled',result.stderr)
 
 
 if __name__ == '__main__':

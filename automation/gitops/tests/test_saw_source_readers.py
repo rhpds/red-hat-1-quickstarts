@@ -22,7 +22,7 @@ class SourceReaderInstallerTests(unittest.TestCase):
     def bundle(self):
         values = {'profiles': ['demo-assistant'], 'harnessEnabled': True,
                   'demoAssistant': {'enabled': True, 'clusterDomain': 'test.example',
-                                    'demoId': 'rh1'}}
+                                    'demoId': 'rh1', 'tenantUser': 'rh1'}}
         output = subprocess.check_output(['helm', 'template', 'test', str(ROOT / 'tenant/saw/charts/saw-bom'),
                                           '-f', '-'], input=yaml.safe_dump(values), text=True)
         data = yaml.safe_load(output)['data']

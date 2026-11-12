@@ -34,9 +34,7 @@ saw:
     enabled: false
     calendarEnabled: false
     provisioningEnabled: false
-    # Secret in vault containing the shared synthetic Mattermost password.
-    passwordSecret: saw-demo-password
-    vaultTokenSecret: saw-vault-writer
+    oidcIssuer: ""
   keycloak:
     postgresPassword: ""
     values: {}

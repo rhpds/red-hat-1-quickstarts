@@ -40,6 +40,9 @@ spec:
       values: |
         route:
           enabled: true
+          {{- if and (eq (lower (toString (($saw.demo | default dict).provisioningEnabled))) "true") (ne $name "mattermost") }}
+          serviceName: saw-demo-{{ $name }}-access
+          {{- end }}
           host: {{ printf "%s-ui-openshell-agents.apps.%s" $name (required "saw.clusterDomain is required for demo HTTPS routes" $saw.clusterDomain) | quote }}
   destination:
     server: https://kubernetes.default.svc

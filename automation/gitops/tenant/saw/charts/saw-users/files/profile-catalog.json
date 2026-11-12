@@ -212,9 +212,23 @@
       ]
     },
     "demo-assistant": {
-      "description": "Shared synthetic email, chat and calendar assistant",
+      "description": "Synthetic personal assistant using the provisioned lab identity",
       "harnessRequired": true,
       "secrets": {
+        "calendar": {
+          "fields": [
+            {
+              "key": "api_key",
+              "kind": "secret",
+              "required": true,
+              "title": "API key"
+            }
+          ],
+          "provider": "calendar",
+          "providers": [
+            "calendar"
+          ]
+        },
         "inference": {
           "fields": [
             {
@@ -241,6 +255,20 @@
             "custom-inference"
           ]
         },
+        "mailpit": {
+          "fields": [
+            {
+              "key": "api_key",
+              "kind": "secret",
+              "required": true,
+              "title": "API key"
+            }
+          ],
+          "provider": "mailpit",
+          "providers": [
+            "mailpit"
+          ]
+        },
         "mattermost": {
           "fields": [
             {
@@ -258,7 +286,7 @@
       },
       "workspaces": [
         {
-          "description": "Shared synthetic email, chat and calendar assistant",
+          "description": "Synthetic personal assistant using the provisioned lab identity",
           "enabled": true,
           "name": "default",
           "sandboxes": [
