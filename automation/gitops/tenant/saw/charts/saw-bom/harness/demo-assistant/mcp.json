@@ -7,7 +7,10 @@
       "args": [
         "${PLUGIN_ROOT}/mcp/source-readers.mjs",
         "mailpit-reader"
-      ]
+      ],
+      "env": {
+        "MAILPIT_AUTHORIZATION": "${MAILPIT_AUTHORIZATION}"
+      }
     },
     "mattermost-reader": {
       "type": "stdio",
@@ -26,7 +29,10 @@
       "args": [
         "${PLUGIN_ROOT}/mcp/source-readers.mjs",
         "calendar-reader"
-      ]
+      ],
+      "env": {
+        "CALENDAR_AUTHORIZATION": "${CALENDAR_AUTHORIZATION}"
+      }
     },
     "demo-notes": {
       "type": "stdio",

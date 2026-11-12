@@ -14,3 +14,9 @@ spec:
     - name: calendar-reader
       governanceProfile: calendar
     - name: demo-notes
+  toolAllowlist:
+    - mailpit-reader__saw_read_email
+    - mattermost-reader__saw_read_chat
+    - calendar-reader__saw_read_calendar
+    - demo-notes__saw_save_report
+    - demo-notes__saw_upload_summary

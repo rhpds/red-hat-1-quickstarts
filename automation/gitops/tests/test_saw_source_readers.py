@@ -57,6 +57,34 @@ class SourceReaderInstallerTests(unittest.TestCase):
                 applier.check_harness_governance(ws, sandbox, info)
         self.assertEqual(installer.openclaw_harness_config(info)['plugins.load.paths'], ['/sandbox/harness'])
 
+    def test_each_source_process_receives_only_its_provider_placeholder(self):
+        servers = installer.harness_mcp_servers(installer.describe_harness_tree(self.bundle(), inline=True))
+        credentials = {'mailpit-reader': 'MAILPIT_AUTHORIZATION',
+                       'mattermost-reader': 'MM_TOKEN', 'calendar-reader': 'CALENDAR_AUTHORIZATION'}
+        for server, name in credentials.items():
+            env = servers[server]['env']
+            self.assertEqual(env.get(name), '${' + name + '}')
+            self.assertEqual(set(env) & set(credentials.values()), {name})
+        self.assertFalse(set(servers['demo-notes']['env']) & set(credentials.values()))
+
+    def test_demo_applies_its_direct_tool_scope_and_restores_previous_settings(self):
+        expected = ['mailpit-reader__saw_read_email', 'mattermost-reader__saw_read_chat',
+                    'calendar-reader__saw_read_calendar', 'demo-notes__saw_save_report',
+                    'demo-notes__saw_upload_summary']
+        info = installer.describe_harness_tree(self.bundle(), inline=True)
+        self.assertEqual(info.get('toolAllowlist'), expected)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / '.openclaw'
+            root.mkdir()
+            before = {'profile': 'full', 'allow': ['read']}
+            config = root / 'openclaw.json'
+            config.write_text(json.dumps({'tools': before}))
+            for scope in [expected, []]:
+                subprocess.run(['node', '-e', installer._OPENCLAW_PREFLIGHT.replace('/sandbox', directory),
+                                json.dumps({'channels': [], 'tools': scope})], check=True, capture_output=True)
+                actual = json.loads(config.read_text())['tools']
+                self.assertEqual(actual, {**before, 'allow': expected, 'toolSearch': False} if scope else before)
+
     def test_rendered_mcp_process_initializes_lists_tools_and_reports_errors(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

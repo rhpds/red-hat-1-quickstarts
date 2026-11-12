@@ -283,6 +283,8 @@ Inference remains at `hub/saw-<user>/inference`. Passwords and provider sessions
 are not logged. Existing source accounts are verified rather than reset.
 
 The harness registers one governed reader per source and the local notes tools.
+Its explicit five-tool scope exposes their schemas directly to the demo model;
+generic shell, messaging and HTTP tools are not exposed.
 Its upload operation is denied by the existing tool-action gate. It prepares
 briefings on demand and does not create a recurring schedule.
 

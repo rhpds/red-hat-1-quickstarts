@@ -1105,7 +1105,11 @@ def describe_harness_tree(files, inline=False):
             bundle_id = json.loads(files["plugin.json"][0].decode("utf-8")).get("name") or name
         except (ValueError, AttributeError):
             pass
+    tools = spec.get("toolAllowlist", [])
+    if not isinstance(tools, list) or any(not isinstance(t, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", t) for t in tools):
+        raise InstallerError(f"harness '{name}': toolAllowlist must contain exact tool names")
     return {
+        "toolAllowlist": tools,
         "name": name,
         "bundleId": bundle_id,
         "agent": spec.get("agent", "openclaw"),
@@ -3108,8 +3112,7 @@ def ws_args(name):
     return [] if name == "default" else ["--workspace", name]
 
 
-# Disable provider channels before OpenClaw CLI calls can auto-install them.
-# Restore tool settings left by the older demo harness during migration.
+# Configure provider channels and the harness tool scope before onboarding.
 _OPENCLAW_PREFLIGHT = """\
 const fs = require("node:fs");
 const root = "/sandbox/.openclaw";
@@ -3136,7 +3139,12 @@ if (fs.existsSync(legacy)) {
   state ??= {before: JSON.parse(fs.readFileSync(legacy, "utf8")), managed: cfg.tools?.allow};
 }
 fs.mkdirSync(root, {recursive: true});
-if (state) {
+if ((desired.tools || []).length) {
+  state ??= {before: cfg.tools || {}};
+  state.managed = desired.tools;
+  fs.writeFileSync(saved, JSON.stringify(state), {mode: 0o600});
+  cfg.tools = {...cfg.tools, allow: desired.tools, toolSearch: false};
+} else if (state) {
   cfg.tools ??= {};
   for (const [key, managed] of [["allow", state.managed], ["toolSearch", false]]) {
     if (JSON.stringify(cfg.tools[key]) === JSON.stringify(managed)) {
@@ -4761,9 +4769,11 @@ class ProfileApplier:
         self.install_keepalive(ws, sb)
 
     def disable_provider_channels(self, ws, sb, exec_cmd, oc_env):
-        """Keep provider channels off; restore settings from the old demo harness."""
+        """Keep provider channels off and apply the mounted harness tool scope."""
         types = {p.type for p in ws.providers if p.name in sb.providers}
-        settings = {"channels": sorted(types & OPENCLAW_CHAT_CHANNELS)}
+        info = self.harness_info.get((ws.name, sb.name)) or {}
+        settings = {"channels": sorted(types & OPENCLAW_CHAT_CHANNELS),
+                    "tools": info.get("toolAllowlist", [])}
         self.cli(*exec_cmd, "node", "-e", _OPENCLAW_PREFLIGHT, json.dumps(settings))
 
     def configure_harness(self, ws, sb, exec_cmd, oc_env):
