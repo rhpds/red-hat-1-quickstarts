@@ -175,6 +175,8 @@ image. Priority: explicit source.dataSource > derived from containerRuntime.
 {{- .Values.source.dataSource -}}
 {{- else if eq .Values.containerRuntime "docker" -}}
 openshell-gateway-docker
+{{- else if .Values.vm.gpu.enabled -}}
+openshell-gateway-gpu
 {{- else -}}
 openshell-gateway
 {{- end -}}
@@ -370,9 +372,11 @@ sandbox_runtime_image = {{ .Values.bom.spec.openshell.sandbox.image | quote }}
 # so only a volume labelled attachable for the caller's workspace can be
 # attached, and no host path or image.
 allow_driver_config = true
+{{- if include "openshell-sandbox.credentialProxyEnabled" . }}
 https_proxy = {{ printf "http://%s-credential-proxy.%s.svc.cluster.local:3128" (include "openshell-sandbox.fullname" .) .Release.Namespace | quote }}
 proxy_ca_bundle = "/home/cloud-user/.config/openshell/credential-proxy-ca.pem"
 proxy_connect_by_hostname = true
+{{- end }}
 {{- if .Values.governance.enabled }}
 
 {{- $engine := include "openshell-sandbox.governanceEngine" . }}
@@ -650,5 +654,64 @@ namespace podSelector is permitted; an empty namespaceSelector is not. */}}
 key-less -meta copies; the issuer CA bundle and registry pull token as is. */}}
 {{- define "openshell-sandbox.vmSecretSource" -}}
 {{- $root := index . 0 -}}{{- $name := index . 1 -}}
-{{- if has $name (list (include "openshell-sandbox.caBundleSecret" $root) ($root.Values.registry.authSecret | default "")) -}}{{ $name }}{{- else -}}{{ $name }}-meta{{- end -}}
+{{- if or (not (include "openshell-sandbox.credentialProxyEnabled" $root)) (has $name (list (include "openshell-sandbox.caBundleSecret" $root) ($root.Values.registry.authSecret | default ""))) -}}{{ $name }}{{- else -}}{{ $name }}-meta{{- end -}}
 {{- end }}
+
+{{/* Pattern parameters may be strings. Only explicit false disables proxying. */}}
+{{- define "openshell-sandbox.credentialProxyEnabled" -}}
+{{- if ne (toString .Values.credentialProxy.enabled) "false" -}}true{{- end -}}
+{{- end -}}
+{{- define "openshell-sandbox.credentialMode" -}}
+{{- if include "openshell-sandbox.credentialProxyEnabled" . -}}proxy{{- else -}}direct{{- end -}}
+{{- end -}}
+{{- define "openshell-sandbox.credentialModeConfigMap" -}}
+{{- if include "openshell-sandbox.credentialProxyEnabled" . -}}saw-proxy-ca{{- else -}}{{ include "openshell-sandbox.fullname" . }}-credential-mode{{- end -}}
+{{- end -}}
+
+{{/* Attached refresh mappings select OAuth profiles in both credential modes. */}}
+{{- define "openshell-sandbox.validateRefreshEgress" -}}
+{{- $attached := concat (list .Values.inference.secretName) (.Values.additionalProviderSecrets | default list) | compact -}}
+{{- $selected := dict -}}
+{{- range .Values.credentialProxy.secrets -}}
+{{- if and .refresh (has .name $attached) -}}
+{{- range .providers -}}{{- $_ := set $selected . true -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $allowed := include "openshell-sandbox.egressHosts" . | fromJsonArray -}}
+{{- range $path, $_ := .Files.Glob "files/provider-profiles/*.yaml" -}}
+{{- $profile := $.Files.Get $path | fromYaml -}}
+{{- if hasKey $selected $profile.id -}}
+{{- range $credential := $profile.credentials | default list -}}
+{{- $spec := $credential.refresh | default dict -}}
+{{- if eq ($spec.strategy | default "") "oauth2_refresh_token" -}}
+{{- $url := urlParse $spec.token_url -}}
+{{- if or (ne $url.scheme "https") $url.userinfo $url.query $url.fragment (contains "?" $spec.token_url) (contains "#" $spec.token_url) (not (regexMatch "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:443)?$" $url.host)) -}}
+{{- fail (printf "provider %s refresh token_url must be HTTPS on port 443 without userinfo, query or fragment" $profile.id) -}}
+{{- end -}}
+{{- if and $.Values.egress.enabled (not (has (trimSuffix ":443" $url.host) $allowed)) -}}
+{{- fail (printf "provider %s refresh token_url host must be in egress.allow or egress.extraAllow" $profile.id) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Never let a requested but unimplemented backend fall through to the VM. */}}
+{{- define "openshell-sandbox.validateDeploymentMode" -}}
+{{- $deployment := .Values.deployment -}}
+{{- if not (kindIs "map" $deployment) -}}
+{{- fail "deployment must be an object with a mode" -}}
+{{- end -}}
+{{- range $key, $_ := $deployment -}}
+{{- if ne $key "mode" -}}{{- fail (printf "unknown deployment field %q" $key) -}}{{- end -}}
+{{- end -}}
+{{- $mode := get $deployment "mode" -}}
+{{- if not (kindIs "string" $mode) -}}{{- fail "deployment.mode must be a string" -}}{{- end -}}
+{{- if not (has $mode (list "vm" "container")) -}}
+{{- fail "deployment.mode must be one of vm, container" -}}
+{{- end -}}
+{{- if ne $mode "vm" -}}
+{{- fail (printf "deployment.mode=%s is not implemented in this revision; no VM fallback (see docs/container-workspaces.md)" $mode) -}}
+{{- end -}}
+{{- end -}}

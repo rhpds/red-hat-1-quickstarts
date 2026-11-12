@@ -8,26 +8,54 @@
 {{- if not (regexMatch "^[a-z]([-a-z0-9]*[a-z0-9])?$" $name) -}}
 {{- fail "saw.userName must begin with a letter and be a lowercase DNS label" -}}
 {{- end -}}
-{{- $proxy := required "saw.credentialProxyImage is required" $saw.credentialProxyImage -}}
-{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $proxy) -}}
+{{- $mode := lower (toString ($saw.deploymentMode | default "vm")) -}}
+{{- if not (has $mode (list "vm" "container")) -}}
+{{- fail "saw.deploymentMode must be vm or container" -}}
+{{- end -}}
+{{- $proxy := $saw.credentialProxyImage | default "" -}}
+{{- if and (eq $mode "vm") (not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $proxy)) -}}
+{{- if not $proxy -}}{{- fail "saw.credentialProxyImage is required" -}}{{- end -}}
 {{- fail "saw.credentialProxyImage must be pinned by digest" -}}
 {{- end -}}
 {{- $source := $saw.vmSource | default dict -}}
-{{- if not (or $source.dataSource (regexMatch "^docker://.+@sha256:[a-f0-9]{64}$" ($source.registryURL | default ""))) -}}
+{{- if and (eq $mode "vm") (not (or $source.dataSource (regexMatch "^docker://.+@sha256:[a-f0-9]{64}$" ($source.registryURL | default "")))) -}}
 {{- fail "saw.vmSource must specify an existing dataSource or a digest-pinned docker:// registryURL" -}}
 {{- end -}}
+{{- $user := dict "name" $name -}}
+{{- $openshell := dict "credentialProxy" (dict "image" $proxy) "source" $source -}}
+{{- if eq $mode "container" -}}
+{{- $_ := set $user "ownerSubject" (required "saw.ownerSubject is required for container deployment" $saw.ownerSubject) -}}
+{{- $_ := set $user "registration" (required "saw.registration is required for container deployment" $saw.registration) -}}
+{{- $_ := set $user "installationID" (required "saw.installationID is required for container deployment" $saw.installationID) -}}
+{{- $_ := set $user "pruneOnRemove" true -}}
+{{- $_ := set $user "profiles" (list (required "saw.profile is required for container deployment" $saw.profile)) -}}
+{{- $_ := set $user "values" (dict "deployment" (dict "mode" "container")) -}}
+{{- end -}}
 {{- $defaults := dict
-  "users" (list (dict "name" $name))
+  "users" (list $user)
   "ownerResolution" (dict "enabled" true "resolverNamespace" "saw-keycloak")
   "global" (dict "repoURL" $repo "targetRevision" $revision "vpArgoNamespace" .Values.gitops.namespace "clusterDomain" $domain)
-  "defaults" (dict "openshellSaw" (dict "credentialProxy" (dict "image" $proxy) "source" $source)) -}}
+  "defaults" (dict "openshellSaw" $openshell) -}}
+{{- if eq $mode "container" -}}
+{{- $_ := set $defaults "containerSites" (dict $name (required "saw.containerSite is required for container deployment" $saw.containerSite)) -}}
+{{- end -}}
 {{- if $saw.inferenceHost -}}
 {{- if not (regexMatch "^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$" $saw.inferenceHost) -}}
 {{- fail "saw.inferenceHost must be a hostname without a scheme, port, or wildcard" -}}
 {{- end -}}
 {{- $_ := set $defaults.defaults.openshellSaw "egress" (dict "extraAllow" (list $saw.inferenceHost)) -}}
+{{- $_ := set $defaults.defaults.openshellSaw.credentialProxy "customInferenceHost" $saw.inferenceHost -}}
+{{- end -}}
+{{- if eq (lower (toString (($saw.inferenceSeed | default dict).enabled))) "true" -}}
+{{- $_ := set (index $defaults.users 0) "vaultPrefix" (printf "secret/data/hub/saw-%s" $name) -}}
+{{- $_ := set $defaults.global "webSearch" (dict "enabled" false) -}}
+{{- $_ := set $defaults.defaults "profiles" (list "custom-inference") -}}
 {{- end -}}
 {{- $values := mustMergeOverwrite $defaults (deepCopy ($saw.values | default dict)) -}}
+{{- if eq (lower (toString (($saw.inferenceSeed | default dict).enabled))) "true" -}}
+{{- $_ := set $values.defaults "profiles" (list "custom-inference") -}}
+{{- $_ := set $values.global "webSearch" (dict "enabled" false) -}}
+{{- end -}}
 {{- $_ := set $values.global "repoURL" $repo -}}
 {{- $_ := set $values.global "targetRevision" $revision -}}
 {{- $_ := set $values.global "vpArgoNamespace" .Values.gitops.namespace -}}
