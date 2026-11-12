@@ -5,6 +5,7 @@ import json
 import os
 import re
 import ssl
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -16,7 +17,9 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def handler(kind, upstream, issuer):
+def handler(kind, upstream, issuer, calendar_upstream=None):
+    calendar_upstream = calendar_upstream or upstream
+    identity_lock = threading.Lock()
     context = ssl.create_default_context()
     if os.environ.get('SAW_INGRESS_CA'):
         context.load_verify_locations(cafile=os.environ['SAW_INGRESS_CA'])
@@ -60,8 +63,10 @@ def handler(kind, upstream, issuer):
             form = urlencode({'grant_type': 'password', 'client_id': 'openshell-cli',
                               'username': user, 'password': password}).encode()
             try:
-                body, _ = fetch(issuer + '/protocol/openid-connect/token', form, 'POST',
-                                {'Content-Type': 'application/x-www-form-urlencoded'})
+                # Keycloak rejects overlapping logins for the same account.
+                with identity_lock:
+                    body, _ = fetch(issuer + '/protocol/openid-connect/token', form, 'POST',
+                                    {'Content-Type': 'application/x-www-form-urlencoded'})
             except HTTPError as error:
                 if error.code in (400, 401, 403):
                     return None
@@ -112,7 +117,7 @@ def handler(kind, upstream, issuer):
                 return self.reply(403, 'Read-only source')
             root = f'/{user}/{user}/'
             if path in ('/', '/.web/') and self.command == 'GET':
-                data, _ = fetch(upstream + root)
+                data, _ = fetch(calendar_upstream + root)
                 page = f'<!doctype html><title>Radicale — {user}</title><h1>Radicale — {user}</h1><p>Read-only lab calendar (UTC)</p><pre>{html.escape(data.decode())}</pre>'
                 return self.reply(200, page, 'text/html; charset=utf-8')
             if (query or '%' in path or not path.startswith(root) or
@@ -122,7 +127,7 @@ def handler(kind, upstream, issuer):
             if size < 0 or size > 8192:
                 return self.reply(413, 'Request too large')
             headers = {'Depth': '1', 'Content-Type': 'application/xml'} if self.command == 'PROPFIND' else {}
-            data, content_type = fetch(upstream + path, self.rfile.read(size) if size else None,
+            data, content_type = fetch(calendar_upstream + path, self.rfile.read(size) if size else None,
                                        self.command, headers)
             return self.reply(207 if self.command == 'PROPFIND' else 200, data, content_type)
 
@@ -136,7 +141,9 @@ def handler(kind, upstream, issuer):
                 parsed = urlsplit(self.path)
                 if parsed.scheme or parsed.netloc:
                     return self.reply(403, 'Invalid source path')
-                return (self.email if kind == 'mailpit' else self.calendar)(parsed.path, parsed.query, user)
+                calendar = kind == 'calendar' or (kind == 'both' and
+                    (parsed.path == '/.web/' or parsed.path.startswith(f'/{user}/{user}/')))
+                return (self.calendar if calendar else self.email)(parsed.path, parsed.query, user)
             except HTTPError as error:
                 return self.reply(404 if error.code == 404 else 503, 'Source unavailable')
             except (URLError, TimeoutError, OSError, ValueError, KeyError, TypeError):
@@ -151,5 +158,5 @@ if __name__ == '__main__':
     issuer = os.environ['OIDC_ISSUER'].rstrip('/')
     if urlsplit(issuer).scheme != 'https':
         raise SystemExit('OIDC_ISSUER must use verified HTTPS')
-    ThreadingHTTPServer(('0.0.0.0', 8080), handler(os.environ['SOURCE_KIND'],
-                        os.environ['SOURCE_UPSTREAM'], issuer)).serve_forever()
+    ThreadingHTTPServer(('0.0.0.0', 8080), handler('both', os.environ['MAILPIT_UPSTREAM'],
+                        issuer, os.environ['CALENDAR_UPSTREAM'])).serve_forever()

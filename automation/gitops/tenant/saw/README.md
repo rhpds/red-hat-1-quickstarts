@@ -270,6 +270,8 @@ Enable `saw.demo.enabled`, `saw.demo.calendarEnabled` and
 `saw.demo.provisioningEnabled` in the **infra** bootstrap values. Infra deploys
 the upstream service charts, a synthetic Mattermost administrator setup Job and
 read-only Mailpit/calendar views authenticated against the SAW Keycloak realm.
+Both views share one gateway process to serialize identity logins; upgrades
+briefly restart that gateway rather than overlap two login queues.
 Backend network policies prevent direct route access around those views.
 
 Enable `saw.demo.enabled` and `saw.demo.provisioningEnabled` in the **tenant**

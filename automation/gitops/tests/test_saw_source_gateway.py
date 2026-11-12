@@ -8,7 +8,9 @@ import ssl
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
@@ -25,6 +27,8 @@ class GatewayTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self.calls = []
+        self.reject_overlapping_logins = False
+        self.login_active = threading.Event()
         owner = self
 
         class Backend(BaseHTTPRequestHandler):
@@ -34,6 +38,13 @@ class GatewayTests(unittest.TestCase):
             def do_POST(self):
                 form = parse_qs(self.rfile.read(int(self.headers['Content-Length'])).decode())
                 valid = form.get('password') == ['LabPassword123!']
+                if owner.reject_overlapping_logins:
+                    if owner.login_active.is_set():
+                        valid = False
+                    else:
+                        owner.login_active.set()
+                        time.sleep(0.15)
+                        owner.login_active.clear()
                 self.send_response(200 if valid else 401)
                 self.end_headers()
                 self.wfile.write(json.dumps({'access_token': 'private-identity-token'} if valid else {}).encode())
@@ -89,6 +100,20 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.request('/api/v1/messages', user=None)[0], 401)
         self.assertEqual(self.request('/api/v1/messages', password='wrong')[0], 401)
         self.assertEqual(self.calls, [])
+
+    def test_concurrent_email_and_calendar_reads_serialize_identity_logins(self):
+        self.reject_overlapping_logins = True
+        self.gateway.RequestHandlerClass = self.module.handler('both', self.upstream, self.upstream + '/realms/openshell')
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            email = pool.submit(self.request, '/api/v1/messages')
+            self.assertTrue(self.login_active.wait(2))
+            calendar = pool.submit(self.request, '/user-a/user-a/')
+            self.assertEqual([email.result()[0], calendar.result()[0]], [200, 200])
+
+    def test_combined_view_does_not_confuse_usernames_with_email_paths(self):
+        self.gateway.RequestHandlerClass = self.module.handler('both', self.upstream, self.upstream + '/realms/openshell')
+        self.assertEqual(self.request('/api/v1/messages', user='api')[0], 200)
+        self.assertEqual(self.request('/message/user-a', user='message')[0], 404)
 
     def test_gateway_and_provisioner_trust_the_private_ingress_ca(self):
         with tempfile.TemporaryDirectory() as directory:

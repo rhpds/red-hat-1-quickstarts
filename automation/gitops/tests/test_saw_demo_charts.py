@@ -245,6 +245,9 @@ class DemoProvisioningTests(unittest.TestCase):
         docs = render('infra/bootstrap', values)
         names = {(d['kind'],d['metadata']['name']):d for d in docs}
         self.assertIn(('Job','saw-demo-admin'), names)
+        gateways = [d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'].startswith('saw-demo-')]
+        self.assertEqual(len(gateways), 1, 'Both source views must share one identity-login queue')
+        self.assertEqual(gateways[0]['spec']['strategy']['type'], 'Recreate')
         ca = names.get(('ExternalSecret', 'saw-demo-ingress-ca'))
         self.assertIsNotNone(ca, 'gateway must reuse the ingress CA stored in Vault')
         self.assertEqual(ca['spec']['data'][0]['remoteRef']['key'], 'secret/data/hub/cluster-ingress-ca')

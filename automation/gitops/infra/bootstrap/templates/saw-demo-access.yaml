@@ -92,20 +92,20 @@ spec:
       volumes:
         - name: scripts
           configMap: {name: saw-demo-access}
-{{- range $source := list "mailpit" "radicale" }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: saw-demo-{{ $source }}-access
+  name: saw-demo-source-access
   namespace: openshell-agents
 spec:
   replicas: 1
+  strategy: {type: Recreate}
   selector:
-    matchLabels: {saw-demo-access: {{ $source }}}
+    matchLabels: {saw-demo-access: sources}
   template:
     metadata:
-      labels: {saw-demo-access: {{ $source }}}
+      labels: {saw-demo-access: sources}
       annotations:
         checksum/source-gateway: {{ $.Files.Get "files/source-gateway.py" | sha256sum }}
     spec:
@@ -118,8 +118,8 @@ spec:
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           env:
             - {name: SAW_INGRESS_CA, value: /ingress-ca/ca-bundle.crt}
-            - {name: SOURCE_KIND, value: {{ ternary "mailpit" "calendar" (eq $source "mailpit") | quote }}}
-            - {name: SOURCE_UPSTREAM, value: {{ printf "http://%s.openshell-agents.svc.cluster.local:%s" $source (ternary "8025" "5232" (eq $source "mailpit")) | quote }}}
+            - {name: MAILPIT_UPSTREAM, value: "http://mailpit.openshell-agents.svc.cluster.local:8025"}
+            - {name: CALENDAR_UPSTREAM, value: "http://radicale.openshell-agents.svc.cluster.local:5232"}
             - {name: OIDC_ISSUER, value: {{ $demo.oidcIssuer | default $issuer | quote }}}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
@@ -132,6 +132,7 @@ spec:
           configMap: {name: saw-demo-access}
         - name: ingress-ca
           secret: {secretName: saw-demo-ingress-ca}
+{{- range $source := list "mailpit" "radicale" }}
 ---
 apiVersion: v1
 kind: Service
@@ -139,7 +140,7 @@ metadata:
   name: saw-demo-{{ $source }}-access
   namespace: openshell-agents
 spec:
-  selector: {saw-demo-access: {{ $source }}}
+  selector: {saw-demo-access: sources}
   ports:
     - {name: {{ ternary "ui" "cal" (eq $source "mailpit") }}, port: 8080, targetPort: http}
 ---
@@ -155,7 +156,7 @@ spec:
   ingress:
     - from:
         - podSelector:
-            matchLabels: {saw-demo-access: {{ $source }}}
+            matchLabels: {saw-demo-access: sources}
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: vault}
           podSelector:
