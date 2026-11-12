@@ -85,8 +85,15 @@
 {{- $digestLines := dict }}
 {{- $payload := 0 }}
 {{- $pathMaps := dict }}
+{{- $harnessFiles := dict }}
 {{- range $path, $_ := $.Files.Glob "harness/**" }}
-{{- $content := $.Files.Get $path }}
+{{- $_ := set $harnessFiles $path ($.Files.Get $path) }}
+{{- end }}
+{{- if hasKey $wanted "demo-assistant" }}
+{{- $_ := set $harnessFiles "harness/demo-assistant/mcp/briefing-lib.mjs" ($.Files.Get "harness/daily-briefing/mcp/briefing-lib.mjs") }}
+{{- $_ := set $harnessFiles "harness/demo-assistant/config.json" (required "demoAssistant is required for the demo-assistant harness" $.Values.demoAssistant | toJson) }}
+{{- end }}
+{{- range $path, $content := $harnessFiles }}
 {{- $parts := splitList "/" $path }}
 {{- if lt (len $parts) 3 }}
 {{- fail (printf "harness file %q is not inside a bundle directory; expected harness/<bundle>/<path>" $path) }}

@@ -451,4 +451,3 @@ networkPolicy:
 sourceReaders:
   enabled: false
   demoId: rh1
-  channelId: ""

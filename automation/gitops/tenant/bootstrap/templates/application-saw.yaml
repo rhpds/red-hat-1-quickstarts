@@ -51,11 +51,6 @@
 {{- $_ := set $values.defaults.openshellSaw "egress" $egress -}}
 {{- $demo := $saw.demo | default dict -}}
 {{- $provision := eq (lower (toString $demo.provisioningEnabled)) "true" -}}
-{{- $readers := or $provision (eq (lower (toString $demo.readersEnabled)) "true") -}}
-{{- if and $readers (not $provision) (not (regexMatch "^[a-z0-9]{26}$" ($demo.channelId | default ""))) -}}
-{{- fail "saw.demo.channelId must be the assigned 26-character channel ID when readersEnabled" -}}
-{{- end -}}
-{{- $_ := set $values.defaults.openshellSaw "sourceReaders" (dict "enabled" $readers "demoId" ($demo.demoId | default "rh1") "channelId" ($demo.channelId | default "")) -}}
 {{- if $provision -}}
 {{- $_ := set $values.defaults "profiles" (list "demo-assistant") -}}
 {{- $_ := set (index $values.users 0) "vaultPrefix" (printf "secret/data/hub/saw-%s" $name) -}}

@@ -213,7 +213,7 @@
     },
     "demo-assistant": {
       "description": "Synthetic personal assistant using the provisioned lab identity",
-      "harnessRequired": false,
+      "harnessRequired": true,
       "secrets": {
         "calendar": {
           "fields": [
@@ -292,7 +292,7 @@
           "sandboxes": [
             {
               "enabled": true,
-              "harnessRequired": false,
+              "harnessRequired": true,
               "name": "notebook",
               "type": "openclaw",
               "uiRoute": true

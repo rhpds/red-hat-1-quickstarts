@@ -4,13 +4,13 @@ import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSourceTools, registerSourceReaders } from "../tenant/saw/charts/openshell-saw/files/installer/source-readers.mjs";
+import { createSourceTools } from "../tenant/saw/charts/saw-bom/harness/demo-assistant/mcp/source-tools.mjs";
 
-const config = { enabled: true, clusterDomain: "test.example", demoId: "rh1", channelId: "a".repeat(26) };
-function tools(read, env = {}) {
+const config = { clusterDomain: "test.example", demoId: "rh1", tenantUser: "rh1" };
+function tools(read, env = { MAILPIT_AUTHORIZATION: "mail-marker", CALENDAR_AUTHORIZATION: "cal-marker" }) {
   return createSourceTools(config, { read, env });
 }
-const result = async (tool, args = {}) => JSON.parse((await tool.execute("test", args)).content[0].text);
+const result = async (tool, args = {}) => tool.run(args);
 
 test("email reads only assigned subjects, follows pagination, and fetches bodies", async () => {
   const requests = [];
@@ -30,20 +30,9 @@ test("email reads only assigned subjects, follows pagination, and fetches bodies
   assert.equal(requests.length, 3);
 });
 
-test("chat uses only the configured channel and a provider placeholder", async () => {
-  const list = tools(async (url, options) => {
-    assert.equal(new URL(url).pathname, `/api/v4/channels/${config.channelId}/posts`);
-    assert.equal(options.headers.Authorization, "Bearer placeholder");
-    return { order: ["post-1"], posts: { "post-1": { id: "post-1", message: "Launch is Friday", create_at: 1 } } };
-  }, { MATTERMOST_TOKEN: "placeholder" });
-  const data = await result(list[1]);
-  assert.equal(data.messages[0].text, "Launch is Friday");
-  assert.ok(!JSON.stringify(data).includes("placeholder"));
-});
-
 test("calendar returns the assigned collection's ICS without guessing dates", async () => {
   const list = tools(async (url, options) => {
-    assert.equal(new URL(url).pathname, "/demo/rh1/");
+    assert.equal(new URL(url).pathname, "/rh1/rh1/");
     assert.equal(options.format, "text");
     return "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20261113T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR";
   });
@@ -57,20 +46,9 @@ test("model arguments cannot override the host, method, channel or credentials",
 });
 
 test("configuration rejects URL and path injection", async () => {
-  for (const patch of [{ clusterDomain: "test.example/collect" }, { demoId: "../other" }, { channelId: "../other" }]) {
+  for (const patch of [{ clusterDomain: "test.example/collect" }, { demoId: "../other" }, { tenantUser: "../other" }]) {
     assert.throws(() => createSourceTools({ ...config, ...patch }), /source-reader configuration/);
   }
-});
-
-test("registration exposes only the five named assistant tools and briefing context only when enabled", async () => {
-  const registered = [], hooks = [];
-  const api = { registerTool: tool => registered.push(tool), on: (...args) => hooks.push(args) };
-  registerSourceReaders(api, { enabled: false });
-  assert.equal(registered.length, 0);
-  registerSourceReaders(api, config);
-  assert.deepEqual(registered.map(t => t.name), ["saw_read_email", "saw_read_chat", "saw_read_calendar", "saw_save_report", "saw_upload_summary"]);
-  assert.equal(hooks[0][0], "before_prompt_build");
-  assert.match(hooks[0][1]().prependSystemContext, /daily briefing/i);
 });
 
 test("report saves only the fixed filename and refuses a symlink without touching its target", async () => {

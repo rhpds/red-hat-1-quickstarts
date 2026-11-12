@@ -1,7 +1,9 @@
+import base64
 import importlib.util
 import json
-import sys
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,146 +19,125 @@ spec.loader.exec_module(installer)
 
 
 class SourceReaderInstallerTests(unittest.TestCase):
+    def bundle(self):
+        values = {'profiles': ['demo-assistant'], 'harnessEnabled': True,
+                  'demoAssistant': {'enabled': True, 'clusterDomain': 'test.example',
+                                    'demoId': 'user-test', 'tenantUser': 'user-test'}}
+        output = subprocess.check_output(['helm', 'template', 'test', str(ROOT / 'tenant/saw/charts/saw-bom'),
+                                          '-f', '-'], input=yaml.safe_dump(values), text=True)
+        data = yaml.safe_load(output)['data']
+        bundle = installer.parse_harness_files({k: base64.b64decode(v) for k, v in data.items()
+                                               if k.startswith('harness__')})['demo-assistant']
+        return {name: (base64.b64decode(raw), False) for name, raw in bundle.files.items()}
+
     def test_source_tools_and_tool_gate_behavior(self):
-        result = subprocess.run(
-            [
-                'node',
-                '--test',
-                '--test-isolation=none',
-                str(ROOT / 'tests/test_saw_source_readers.mjs'),
-                str(PATH.parent / 'tool-gate.test.mjs'),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = subprocess.run(['node', '--test', '--test-isolation=none',
+                                 str(ROOT / 'tests/test_saw_source_readers.mjs'),
+                                 str(PATH.parent / 'tool-gate.test.mjs')], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_rendered_installer_is_self_contained_and_covers_javascript_assets(self):
-        rendered = subprocess.check_output(
-            [
-                'helm',
-                'template',
-                'test',
-                str(PATH.parents[2]),
-                '--set',
-                'global.clusterDomain=test.example',
-                '--set',
-                'networkPolicy.enabled=false',
-                '--set',
-                'credentialProxy.image=example.invalid/proxy@sha256:' + 'a' * 64,
-                '--show-only',
-                'templates/configmap-installer.yaml',
-            ],
-            text=True,
-        )
-        data = yaml.safe_load(rendered)['data']
-        # The existing golden image verifies apply_bom.py. Do not introduce
-        # runtime reads of new, uncovered executable files from the ConfigMap.
-        with tempfile.TemporaryDirectory() as directory:
-            script = Path(directory) / 'apply_bom.py'
-            script.write_text(data['apply_bom.py'])
-            result = subprocess.check_output(
-                [
-                    sys.executable,
-                    '-B',
-                    '-c',
-                    'import json, runpy, sys; ns = runpy.run_path(sys.argv[1]); '
-                    'print(json.dumps([ns["_SOURCE_READERS_PREFLIGHT"], '
-                    'ns["_SOURCE_READERS_MODULE"].decode("utf-8")]))',
-                    str(script),
-                ],
-                text=True,
-            )
-        assets = ['source-readers-preflight.cjs', 'source-readers.mjs']
-        self.assertEqual(json.loads(result), [(PATH.parent / name).read_text(encoding='utf-8') for name in assets])
-        self.assertTrue(set(assets).isdisjoint(data))
+    def test_harness_checks_all_three_governed_sources(self):
+        tree = self.bundle()
+        info = installer.describe_harness_tree(tree, inline=True)
+        self.assertEqual(info['mcpServers'], ['demo-assistant'])
+        self.assertEqual({g['governanceProfile'] for g in info['governance']},
+                         {'mailpit', 'mattermost', 'calendar'})
+        self.assertEqual(tree['mcp/briefing-lib.mjs'][0],
+                         (ROOT / 'tenant/saw/charts/saw-bom/harness/daily-briefing/mcp/briefing-lib.mjs').read_bytes())
+        applier = installer.ProfileApplier.__new__(installer.ProfileApplier)
+        applier.governance_catalog = lambda ws: {p: set() for p in ['mailpit', 'mattermost', 'calendar']}
+        ws = installer.Workspace(name='default')
+        providers = [installer.Provider(name=p, type=p) for p in ['mailpit', 'mattermost', 'calendar']]
+        applier.usable = lambda ws: providers
+        sandbox = installer.Sandbox(name='notebook', providers=[p.name for p in providers])
+        applier.check_harness_governance(ws, sandbox, info)
+        for missing in ['mailpit', 'mattermost', 'calendar']:
+            sandbox.providers = [p.name for p in providers if p.name != missing]
+            with self.assertRaisesRegex(installer.InstallerError, missing):
+                applier.check_harness_governance(ws, sandbox, info)
+        self.assertEqual(installer.openclaw_harness_config(info)['plugins.load.paths'], ['/sandbox/harness'])
 
-    def test_preflight_prevents_channel_autoinstall_and_preserves_gate(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = Path(directory) / '.openclaw/openclaw.json'
-            config.parent.mkdir()
-            before = {'tools': {'profile': 'full'}, 'plugins': {'entries': {
-                'saw-tool-gate': {'enabled': True}}}, 'channels': {'slack': {'enabled': False}}}
-            config.write_text(json.dumps(before))
-            script = installer._SOURCE_READERS_PREFLIGHT.replace('/sandbox', directory)
-            for _ in range(2):
-                subprocess.run(['node', '-e', script], check=True, capture_output=True)
-            after = json.loads(config.read_text())
-            self.assertFalse(after['channels'].pop('mattermost')['enabled'])
-            self.assertFalse(after['plugins']['entries'].pop('mattermost')['enabled'])
-            self.assertEqual(after, before)
-
-    def test_tenant_reader_opt_in_is_scoped_and_requires_an_assigned_channel(self):
-        values = {
-            'rag': None,
-            'saw': {
-                'enabled': True,
-                'userName': 'user-test',
-                'clusterDomain': 'test.example',
-                'credentialProxyImage': 'example.invalid/proxy@sha256:' + 'a' * 64,
-                'vmSource': {'dataSource': 'golden'},
-                'demo': {'enabled': True, 'readersEnabled': True, 'channelId': 'a' * 26, 'demoId': 'rh1'},
-            },
-        }
-        command = ['helm', 'template', 'test', str(ROOT / 'tenant/bootstrap'), '-f', '-']
-        output = subprocess.check_output(command, input=yaml.safe_dump(values), text=True)
-        app = next(d for d in yaml.safe_load_all(output) if d and d['kind'] == 'Application')
-        settings = yaml.safe_load(app['spec']['source']['helm']['values'])['defaults']['openshellSaw']['sourceReaders']
-        self.assertEqual(settings, {'enabled': True, 'channelId': 'a' * 26, 'demoId': 'rh1'})
-        values['saw']['demo']['channelId'] = ''
-        result = subprocess.run(command, input=yaml.safe_dump(values), text=True, capture_output=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('saw.demo.channelId', result.stderr)
-
-    def test_source_tool_configuration_is_idempotent_and_restores_previous_scope(self):
+    def test_rendered_mcp_process_initializes_lists_tools_and_reports_errors(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            config = root / '.openclaw/openclaw.json'
-            source = root / '.saw/trusted/source-readers/config.json'
-            config.parent.mkdir(parents=True)
-            source.parent.mkdir(parents=True)
+            for name, (content, _) in self.bundle().items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+            requests = [
+                {'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18'}},
+                {'id': 2, 'method': 'tools/list'},
+                {'id': 3, 'method': 'tools/call', 'params': {'name': 'saw_read_email', 'arguments': {'url': 'https://other.invalid'}}},
+                {'id': 4, 'method': 'tools/call', 'params': {'name': 'saw_read_email', 'arguments': {}}},
+            ]
+            result = subprocess.run(['node', str(root / 'mcp/source-readers.mjs')],
+                                    input='\n'.join(json.dumps(r) for r in requests) + '\n',
+                                    env={'PATH': os.environ['PATH']}, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            replies = {r['id']: r for r in map(json.loads, result.stdout.splitlines())}
+            self.assertEqual(replies[1]['result']['serverInfo']['name'], 'demo-assistant')
+            self.assertEqual({t['name'] for t in replies[2]['result']['tools']},
+                             {'saw_read_email', 'saw_read_chat', 'saw_read_calendar', 'saw_save_report', 'saw_upload_summary'})
+            self.assertTrue(replies[3]['result']['isError'])
+            self.assertIn('accept no arguments', replies[3]['result']['content'][0]['text'])
+            self.assertTrue(replies[4]['result']['isError'])
+            self.assertIn('placeholder is unavailable', replies[4]['result']['content'][0]['text'])
+
+    def test_shared_preflight_migrates_old_plugin_and_restores_previous_tool_scope(self):
+        info = installer.describe_harness_tree(self.bundle(), inline=True)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / '.openclaw'
+            root.mkdir()
+            config = root / 'openclaw.json'
             before = {'profile': 'full', 'allow': ['read']}
-            config.write_text(json.dumps({'tools': before}))
-            source.write_text('{"enabled": true}')
-            script = installer._TOOL_GATE_CONFIG.replace('/sandbox', str(root))
+            old = ['saw_read_email', 'saw_read_chat', 'saw_read_calendar', 'saw_save_report', 'saw_upload_summary']
+            config.write_text(json.dumps({'tools': {'profile': 'full', 'allow': old, 'toolSearch': False},
+                'plugins': {'load': {'paths': [directory + '/.saw/trusted/source-readers']},
+                            'entries': {'saw-source-readers': {'enabled': True}, 'saw-tool-gate': {'enabled': True}},
+                            'allow': ['saw-source-readers', 'saw-tool-gate']}}))
+            (root / 'saw-source-tools-before.json').write_text(json.dumps(before))
+            script = installer._OPENCLAW_PREFLIGHT.replace('/sandbox', directory)
+            def apply(tools):
+                subprocess.run(['node', '-e', script, json.dumps({'channels': ['mattermost'], 'tools': tools})],
+                               check=True, capture_output=True)
+                return json.loads(config.read_text())
             for _ in range(2):
-                subprocess.run(['node', '-e', script], check=True, capture_output=True)
-                self.assertEqual(json.loads(config.read_text())['tools']['allow'],
-                                 ['saw_read_email', 'saw_read_chat', 'saw_read_calendar', 'saw_save_report', 'saw_upload_summary'])
-                self.assertTrue(json.loads(config.read_text())['plugins']['entries']['saw-source-readers']
-                                ['hooks']['allowConversationAccess'])
-            # A disable directly after upgrading must also recognize the old managed list.
+                after = apply(info['toolAllowlist'])
+                self.assertEqual(after['tools']['allow'], info['toolAllowlist'])
+                self.assertNotIn('saw-source-readers', after['plugins']['entries'])
+                self.assertNotIn('saw-source-readers', after['plugins']['allow'])
+                self.assertEqual(after['plugins']['load']['paths'], [])
+                self.assertTrue(after['plugins']['entries']['saw-tool-gate']['enabled'])
+                self.assertFalse(after['channels']['mattermost']['enabled'])
+            self.assertEqual(apply([])['tools'], before)
+            self.assertFalse((root / 'saw-source-tools-before.json').exists())
+            # Disabling a harness must preserve a later operator change.
+            apply(info['toolAllowlist'])
             cfg = json.loads(config.read_text())
-            cfg['tools']['allow'] = ['saw_read_email', 'saw_read_chat', 'saw_read_calendar']
+            cfg['tools']['allow'] = ['operator-tool']
             config.write_text(json.dumps(cfg))
-            source.write_text('{"enabled": false}')
-            subprocess.run(['node', '-e', script], check=True, capture_output=True)
-            self.assertEqual(json.loads(config.read_text())['tools'], before)
+            self.assertEqual(apply([])['tools']['allow'], ['operator-tool'])
 
-    def test_trusted_bundle_installs_separate_fixed_scope_plugin(self):
+    def test_gate_bundle_contains_only_enforcement_assets(self):
         applier = installer.ProfileApplier.__new__(installer.ProfileApplier)
-        applier.cfg = {'dashboard': {'owner': 'user-test'}, 'ownerSubject': 'subject-test',
-                       'sourceReaders': {'enabled': True, 'clusterDomain': 'test.example',
-                                         'demoId': 'rh1', 'channelId': 'a' * 26}}
-        tree, _, _, policy_hash = applier.tool_gate_bundle(installer.Workspace(name='default'),
-                                                        installer.Sandbox(name='notebook'))
-        self.assertIn('source-readers/index.js', tree.keys())
-        manifest = json.loads(tree['source-readers/openclaw.plugin.json'][0])
-        self.assertEqual(manifest['contracts']['tools'],
-                         ['saw_read_email', 'saw_read_chat', 'saw_read_calendar', 'saw_save_report', 'saw_upload_summary'])
-        self.assertEqual(manifest['hooks'], ['before_prompt_build'])
-        self.assertEqual(tree['source-readers/source-readers.mjs'][0], installer._SOURCE_READERS_MODULE)
-        self.assertEqual(json.loads(tree['source-readers/config.json'][0]), applier.cfg['sourceReaders'])
-        self.assertIn(policy_hash.encode(), tree['plugin/index.js'][0])
+        applier.cfg = {'dashboard': {'owner': 'user-test'}, 'ownerSubject': 'subject-test'}
+        tree, _, _, _ = applier.tool_gate_bundle(installer.Workspace(name='default'), installer.Sandbox(name='notebook'))
+        self.assertFalse(any(p.startswith('source-readers/') for p in tree))
         self.assertIn(b'defaultAction: deny', tree['tool-actions.yaml'][0])
+        self.assertEqual((PATH.parent / 'tool-actions.yaml').read_bytes(),
+                         (ROOT / 'tenant/saw/charts/governance-policy/tool-actions.yaml').read_bytes())
 
-    def test_cluster_and_installer_ship_the_same_tool_policy(self):
-        # Behavioral allow/deny checks run in tool-gate.test.mjs; the cluster
-        # and signed installer must ship the same policy.
-        self.assertEqual(
-            (PATH.parent / 'tool-actions.yaml').read_bytes(),
-            (ROOT / 'tenant/saw/charts/governance-policy/tool-actions.yaml').read_bytes(),
-        )
+    def test_harness_tool_scope_is_applied_after_openclaw_configuration(self):
+        info = installer.describe_harness_tree(self.bundle(), inline=True)
+        applier = installer.ProfileApplier.__new__(installer.ProfileApplier)
+        applier.harness_info = {('default', 'notebook'): info}
+        calls = []
+        applier.cli = lambda *args, **kwargs: calls.append(args)
+        applier.configure_harness_mcp = lambda *args: calls.append(('mcp-configured',))
+        applier.configure_harness(installer.Workspace(name='default'),
+                                  installer.Sandbox(name='notebook', type='openclaw'), (), 'openclaw-env')
+        self.assertEqual(calls[-1][:2], ('node', '-e'))
+        self.assertEqual(json.loads(calls[-1][-1])['tools'], info['toolAllowlist'])
 
 
 if __name__ == '__main__':

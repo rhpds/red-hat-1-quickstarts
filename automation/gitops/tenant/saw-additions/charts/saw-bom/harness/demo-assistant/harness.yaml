@@ -1,0 +1,18 @@
+apiVersion: saw.redhat.com/v1alpha1
+kind: HarnessBundle
+metadata:
+  name: demo-assistant
+spec:
+  agent: openclaw
+  version: 0.1.0
+  plugins: []
+  # One process serializes reads across all sources to avoid overlapping logins.
+  mcpServers:
+    - name: demo-assistant
+      governanceProfiles: [mailpit, mattermost, calendar]
+  toolAllowlist:
+    - demo-assistant__saw_read_email
+    - demo-assistant__saw_read_chat
+    - demo-assistant__saw_read_calendar
+    - demo-assistant__saw_save_report
+    - demo-assistant__saw_upload_summary

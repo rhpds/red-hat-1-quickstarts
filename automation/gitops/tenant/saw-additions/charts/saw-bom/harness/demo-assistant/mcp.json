@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "demo-assistant": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/mcp/source-readers.mjs"
+      ],
+      "env": {
+        "MM_TOKEN": "${MM_TOKEN}",
+        "MAILPIT_AUTHORIZATION": "${MAILPIT_AUTHORIZATION}",
+        "CALENDAR_AUTHORIZATION": "${CALENDAR_AUTHORIZATION}"
+      }
+    }
+  }
+}

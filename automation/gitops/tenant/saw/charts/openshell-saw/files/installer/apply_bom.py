@@ -814,7 +814,7 @@ HARNESS_IMAGE_MAX_BYTES = 512 * 1024 * 1024
 # no longer wants, not leave them stale.
 HARNESS_CONFIG_KEYS = ("plugins.load.paths", "skills.load.extraDirs")
 # Provider types that are also OpenClaw chat channels.
-OPENCLAW_CHAT_CHANNELS = frozenset({"slack"})
+OPENCLAW_CHAT_CHANNELS = frozenset({"slack", "mattermost"})
 OPENCLAW_EXEC_ENV = ("OPENCLAW_HOME=/sandbox SQLITE_TMPDIR=/sandbox/.openclaw/state "
                      "TMPDIR=/sandbox/.openclaw/state OPENCLAW_NIX_MODE=0")
 # mcp.json env/header value: exactly ${VAR}, or Authorization-style
@@ -1082,9 +1082,13 @@ def describe_harness_tree(files, inline=False):
                         "or ship the bundle as an image")
                 # A stdio server runs inside the sandbox, under its policy. It
                 # needs a governanceProfile only when it calls a service.
-                if profile:
-                    governance.append({"kind": "MCP server", "name": server,
-                                       "governanceProfile": profile, "hosts": []})
+                profiles = (declared.get(server) or {}).get("governanceProfiles", [])
+                if not isinstance(profiles, list) or any(not isinstance(p, str) or not p for p in profiles):
+                    raise InstallerError(f"harness '{name}': governanceProfiles must be a list of profile names")
+                profiles = list(dict.fromkeys(([profile] if profile else []) + profiles))
+                if profiles:
+                    governance.extend({"kind": "MCP server", "name": server,
+                                       "governanceProfile": p, "hosts": []} for p in profiles)
                 else:
                     log(f"WARN: harness '{name}': stdio MCP server '{server}' has no "
                         "governanceProfile; its egress, if any, is enforced at runtime by "
@@ -1105,7 +1109,11 @@ def describe_harness_tree(files, inline=False):
             bundle_id = json.loads(files["plugin.json"][0].decode("utf-8")).get("name") or name
         except (ValueError, AttributeError):
             pass
+    tools = spec.get("toolAllowlist", [])
+    if not isinstance(tools, list) or any(not isinstance(t, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", t) for t in tools):
+        raise InstallerError(f"harness '{name}': toolAllowlist must contain exact tool names")
     return {
+        "toolAllowlist": tools,
         "name": name,
         "bundleId": bundle_id,
         "agent": spec.get("agent", "openclaw"),
@@ -3108,12 +3116,52 @@ def ws_args(name):
     return [] if name == "default" else ["--workspace", name]
 
 
-# Keep the source-reader JavaScript in its own files for editing and tests.
-# Helm replaces these reads with literals in the rendered, signed installer;
-# deployed VMs do not load additional executable files outside verification.
-_SOURCE_READERS_PREFLIGHT = Path(__file__).with_name("source-readers-preflight.cjs").read_text(encoding="utf-8")
+# Configure channels and the harness's optional tool scope before any OpenClaw
+# CLI call: a provider token can otherwise trigger automatic channel installation.
+_OPENCLAW_PREFLIGHT = """\
+const fs = require("node:fs");
+const root = "/sandbox/.openclaw";
+const file = root + "/openclaw.json";
+const desired = JSON.parse(process.argv[1]);
+const cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+cfg.channels ??= {};
+cfg.plugins ??= {};
+cfg.plugins.entries ??= {};
+for (const name of desired.channels) {
+  cfg.channels[name] = {...cfg.channels[name], enabled: false};
+  cfg.plugins.entries[name] = {...cfg.plugins.entries[name], enabled: false};
+}
+// Migrate the previous demo connector without retaining executable plugin paths.
+if (Array.isArray(cfg.plugins.load?.paths)) {
+  cfg.plugins.load.paths = cfg.plugins.load.paths.filter(p => p !== "/sandbox/.saw/trusted/source-readers");
+}
+if (Array.isArray(cfg.plugins.allow)) cfg.plugins.allow = cfg.plugins.allow.filter(p => p !== "saw-source-readers");
+delete cfg.plugins.entries["saw-source-readers"];
+const saved = root + "/saw-harness-tools-before.json";
+const legacy = root + "/saw-source-tools-before.json";
+let state = fs.existsSync(saved) ? JSON.parse(fs.readFileSync(saved, "utf8")) : null;
+if (fs.existsSync(legacy)) {
+  state ??= {before: JSON.parse(fs.readFileSync(legacy, "utf8")), managed: cfg.tools?.allow};
+}
+fs.mkdirSync(root, {recursive: true});
+if (desired.tools.length) {
+  state ??= {before: cfg.tools || {}};
+  state.managed = desired.tools;
+  fs.writeFileSync(saved, JSON.stringify(state), {mode: 0o600});
+  cfg.tools = {...cfg.tools, allow: desired.tools, toolSearch: false};
+} else if (state) {
+  cfg.tools ??= {};
+  for (const [key, managed] of [["allow", state.managed], ["toolSearch", false]]) {
+    if (JSON.stringify(cfg.tools[key]) === JSON.stringify(managed)) {
+      if (key in state.before) cfg.tools[key] = state.before[key]; else delete cfg.tools[key];
+    }
+  }
+  if (fs.existsSync(saved)) fs.unlinkSync(saved);
+}
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\\n", {mode: 0o600});
+if (fs.existsSync(legacy)) fs.unlinkSync(legacy);
+"""
 
-_SOURCE_READERS_MODULE = Path(__file__).with_name("source-readers.mjs").read_text(encoding="utf-8").encode("utf-8")
 
 _TOOL_GATE_PACKAGE = """\
 {
@@ -3155,34 +3203,6 @@ cfg.plugins.entries = cfg.plugins.entries || {};
 cfg.plugins.entries["saw-tool-gate"] = {
   ...cfg.plugins.entries["saw-tool-gate"], enabled: true,
 };
-const sourcePath = "/sandbox/.saw/trusted/source-readers";
-const sourceConfig = JSON.parse(fs.readFileSync(sourcePath + "/config.json", "utf8"));
-const toolsBackup = "/sandbox/.openclaw/saw-source-tools-before.json";
-const sourceTools = ["saw_read_email", "saw_read_chat", "saw_read_calendar", "saw_save_report", "saw_upload_summary"];
-cfg.plugins.load.paths = [...new Set([...cfg.plugins.load.paths, sourcePath])];
-cfg.plugins.entries["saw-source-readers"] = {
-  enabled: Boolean(sourceConfig.enabled),
-  hooks: { allowConversationAccess: Boolean(sourceConfig.enabled) },
-};
-if (sourceConfig.enabled) {
-  if (Array.isArray(cfg.plugins.allow) && cfg.plugins.allow.length) {
-    cfg.plugins.allow = [...new Set([...cfg.plugins.allow, "saw-source-readers"])];
-  }
-  cfg.tools = cfg.tools || {};
-  if (!fs.existsSync(toolsBackup)) fs.writeFileSync(toolsBackup, JSON.stringify(cfg.tools), {mode: 0o600});
-  cfg.tools.allow = sourceTools;
-  cfg.tools.toolSearch = false;
-} else if (fs.existsSync(toolsBackup)) {
-  const before = JSON.parse(fs.readFileSync(toolsBackup, "utf8"));
-  for (const key of ["allow", "toolSearch"]) {
-    const managed = key === "allow" ? sourceTools : false;
-    if (JSON.stringify(cfg.tools?.[key]) === JSON.stringify(managed) ||
-        (key === "allow" && JSON.stringify(cfg.tools?.allow) === JSON.stringify(sourceTools.slice(0, 3)))) {
-      if (key in before) cfg.tools[key] = before[key]; else delete cfg.tools[key];
-    }
-  }
-  fs.unlinkSync(toolsBackup);
-}
 fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\\n");
 """
 
@@ -3968,18 +3988,6 @@ class ProfileApplier:
             "plugin/openclaw.plugin.json": (_TOOL_GATE_MANIFEST.encode(), False),
             "plugin/index.js": (plugin, False),
             "plugin/tool-gate.mjs": ((here / "tool-gate.mjs").read_bytes(), False),
-            "source-readers/source-readers.mjs": (_SOURCE_READERS_MODULE, False),
-            "source-readers/config.json": ((json.dumps(self.cfg.get("sourceReaders") or {"enabled": False}) + "\n").encode(), False),
-            "source-readers/package.json": (json.dumps({"name": "saw-source-readers", "version": "0.1.0", "type": "module",
-                "openclaw": {"extensions": ["./index.js"], "runtimeExtensions": ["./index.js"]}}).encode(), False),
-            "source-readers/openclaw.plugin.json": (json.dumps({"id": "saw-source-readers", "name": "SAW source readers",
-                "contracts": {"tools": ["saw_read_email", "saw_read_chat", "saw_read_calendar", "saw_save_report", "saw_upload_summary"]},
-                "hooks": ["before_prompt_build"],
-                "activation": {"onStartup": True}, "configSchema": {"type": "object", "additionalProperties": False}}).encode(), False),
-            "source-readers/index.js": (b'import {readFileSync} from "node:fs";\n'
-                b'import {registerSourceReaders} from "./source-readers.mjs";\n'
-                b'export default {id:"saw-source-readers", name:"SAW source readers", register(api) {'
-                b'registerSourceReaders(api, JSON.parse(readFileSync(new URL("./config.json", import.meta.url), "utf8")));}};\n', False),
         }
         digest = harness_tree_digest(tree)
         source = f"gate:{digest}"
@@ -4604,8 +4612,7 @@ class ProfileApplier:
         # already gives /sandbox to the image's user.
         model = sandbox_model(sb, provider, "nvidia/nemotron-3.5-lightning-30b-a3b")
         oc_env = OPENCLAW_EXEC_ENV
-        if (self.cfg.get("sourceReaders") or {}).get("enabled"):
-            self.cli(*exec_cmd, "node", "-e", _SOURCE_READERS_PREFLIGHT)
+        self.disable_provider_channels(ws, sb, exec_cmd, oc_env)
         # OpenShell 0.1.x: no inference.local. OpenClaw calls the provider's
         # own endpoint with the placeholder key this exec receives in the
         # provider's env var (e.g. NVIDIA_API_KEY); the sandbox proxy puts in
@@ -4753,7 +4760,6 @@ class ProfileApplier:
         # openclaw_gateway_script restarts only on a harness refill, when none
         # is running, or when its settings changed; the files are in place either way.
         self.install_tool_gate(ws, sb, enable=True)
-        self.disable_provider_channels(ws, sb, exec_cmd, oc_env)
         # One script: the gateway secret is made and kept inside the sandbox
         # (the installer never sees it). The gateway is restarted only when
         # the harness was refilled, none is running, or its settings (auth
@@ -4768,17 +4774,12 @@ class ProfileApplier:
         self.install_keepalive(ws, sb)
 
     def disable_provider_channels(self, ws, sb, exec_cmd, oc_env):
-        """Keep OpenClaw's own chat channel off for a provider that shares
-        its name (slack). The provider is for governed reads (the harness's
-        MCP servers); onboarding skips channels. Found live: with the Slack
-        provider attached, the gateway treats the slack channel as configured,
-        tries to install @openclaw/slack from npm at startup (egress denied)
-        and refuses to start; the UI then answers 502."""
+        """Keep provider channels off and apply the mounted harness's tool scope."""
         types = {p.type for p in ws.providers if p.name in sb.providers}
-        for channel in sorted(types & OPENCLAW_CHAT_CHANNELS):
-            self.cli(*exec_cmd, "sh", "-c",
-                     f"{oc_env} openclaw config set channels.{channel}.enabled false",
-                     check=False)
+        info = self.harness_info.get((ws.name, sb.name)) or {}
+        settings = {"channels": sorted(types & OPENCLAW_CHAT_CHANNELS),
+                    "tools": info.get("toolAllowlist", [])}
+        self.cli(*exec_cmd, "node", "-e", _OPENCLAW_PREFLIGHT, json.dumps(settings))
 
     def configure_harness(self, ws, sb, exec_cmd, oc_env):
         """Point OpenClaw at the mounted bundle (openclaw_harness_config).
@@ -4815,6 +4816,8 @@ class ProfileApplier:
                 f"|| {oc_env} openclaw plugins enable {shlex.quote(i)}" for i in ids)
             self.cli(*exec_cmd, "sh", "-c", script, check=False)
         self.configure_harness_mcp(ws, sb, exec_cmd, oc_env, info)
+        # Onboarding may reset tool settings; reapply scope before starting the gateway.
+        self.disable_provider_channels(ws, sb, exec_cmd, oc_env)
 
     def configure_harness_mcp(self, ws, sb, exec_cmd, oc_env, info):
         """Re-declare the bundle's MCP servers under mcp.servers
@@ -5051,15 +5054,6 @@ class ProfileApplier:
         if (not gate or not gate.get("enabled") or gate.get("status") != "loaded"
                 or gate.get("rootDir") != f"{GATE_MOUNT}/plugin"):
             failures.append("OpenClaw has not loaded saw-tool-gate from the trusted mount")
-        if (self.cfg.get("sourceReaders") or {}).get("enabled"):
-            readers = next((row for row in plugins if isinstance(row, dict)
-                            and row.get("id") == "saw-source-readers"), None)
-            if (not readers or not readers.get("enabled") or readers.get("status") != "loaded"
-                    or readers.get("rootDir") != f"{GATE_MOUNT}/source-readers"):
-                failures.append("OpenClaw has not loaded saw-source-readers from the trusted mount")
-            elif not {"saw_read_email", "saw_read_chat", "saw_read_calendar", "saw_save_report", "saw_upload_summary"}.issubset(
-                    readers.get("toolNames") or []):
-                failures.append("OpenClaw has not registered all personal-assistant tools")
         return failures
 
     def cleanup_harness_volumes(self):
@@ -5103,27 +5097,17 @@ class ProfileApplier:
         self.tool_gate_identity(ws, sb)
         if not enable:
             return
-        if (self.cfg.get("sourceReaders") or {}).get("enabled"):
-            for provider in ("mailpit", "mattermost", "calendar"):
-                status = self.cli("sandbox", "provider", "status", sb.name, provider,
-                                  *ws_args(ws.name), check=False, quiet=True)
-                if not status.ok or not re.search(r":\s+ready\b", status.out):
-                    raise InstallerError(f"source readers require a ready {provider} provider on '{sb.name}'")
         exec_cmd = ("sandbox", "exec", "-n", sb.name, *ws_args(ws.name), "--no-tty", "--")
         if not self.cli(*exec_cmd, "node", "-e", _TOOL_GATE_CONFIG,
                         check=False, quiet=True).ok:
             raise InstallerError(f"could not configure saw-tool-gate in sandbox '{sb.name}'")
         oc_env = OPENCLAW_EXEC_ENV
-        plugins = ["saw-tool-gate"]
-        if (self.cfg.get("sourceReaders") or {}).get("enabled"):
-            plugins.append("saw-source-readers")
-        for plugin in plugins:
-            enabled = self.cli(*exec_cmd, "sh", "-c",
-                               f"{oc_env} openclaw plugins enable {plugin} --accept-capabilities "
-                               f"|| {oc_env} openclaw plugins enable {plugin}",
-                               check=False, quiet=True)
-            if not enabled.ok:
-                raise InstallerError(f"could not enable {plugin} in sandbox '{sb.name}'")
+        enabled = self.cli(*exec_cmd, "sh", "-c",
+                           f"{oc_env} openclaw plugins enable saw-tool-gate --accept-capabilities "
+                           f"|| {oc_env} openclaw plugins enable saw-tool-gate",
+                           check=False, quiet=True)
+        if not enabled.ok:
+            raise InstallerError(f"could not enable saw-tool-gate in sandbox '{sb.name}'")
 
     def install_keepalive(self, ws, sb):
         """A system unit that keeps an exec session open so the sandbox stays

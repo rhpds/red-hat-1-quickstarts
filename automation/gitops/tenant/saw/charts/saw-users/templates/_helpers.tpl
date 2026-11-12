@@ -284,6 +284,11 @@ an enabled workspace). pattern-secrets syncs only these.
 {{- $profiles = $user.profiles -}}
 {{- end -}}
 {{- $bomValues := dict "profiles" $profiles -}}
+{{- $demo := deepCopy ($root.Values.defaults.openshellSaw.sourceReaders | default dict) -}}
+{{- if $demo.enabled -}}
+{{- $_ := set $demo "clusterDomain" $root.Values.global.clusterDomain -}}
+{{- $_ := set $bomValues "demoAssistant" $demo -}}
+{{- end -}}
 {{- $imageOverrides := deepCopy ($root.Values.defaults.imageOverrides | default dict) -}}
 {{- range $name, $image := ($user.imageOverrides | default dict) -}}
 {{- $_ := set $imageOverrides $name $image -}}

@@ -78,7 +78,6 @@ changes here reach an existing VM after a restart (unlike cloud-init).
           "markerPrefix" "saw-cred"
           "secrets" $bindings)
       "gatewayPki" (dict "generation" .Values.gatewayPki.generation)
-      "sourceReaders" (mergeOverwrite (deepCopy (.Values.sourceReaders | default dict)) (dict "clusterDomain" .Values.global.clusterDomain))
       "ownerSubject" (.Values.accessControl.ownerSubject | default "")
       "ownerSubjectSource" (.Values.accessControl.ownerSubjectSource | default "")
       "oidcIssuer" $oidcIssuer
@@ -143,19 +142,7 @@ data:
   openshell-gateway-pki.conf: |
 {{ .Files.Get "files/guest/openshell-gateway-pki.conf" | indent 4 }}
   apply_bom.py: |
-{{- /* Keep JS source separate while covering its deployed bytes with the
-existing apply_bom.py signature. The pinned golden-image verifier does not
-cover additional filenames; it verifies this rendered installer instead. */}}
-{{- $installer := .Files.Get "files/installer/apply_bom.py" }}
-{{- range $name := list "source-readers-preflight.cjs" "source-readers.mjs" }}
-{{- $source := required (printf "installer asset %s is missing" $name) ($.Files.Get (printf "files/installer/%s" $name)) }}
-{{- $read := printf "Path(__file__).with_name(%s).read_text(encoding=\"utf-8\")" ($name | toJson) }}
-{{- if ne (len (splitList $read $installer)) 2 }}
-{{- fail (printf "expected one installer asset reference for %s" $name) }}
-{{- end }}
-{{- $installer = replace $read ($source | toJson) $installer }}
-{{- end }}
-{{ $installer | indent 4 }}
+{{ .Files.Get "files/installer/apply_bom.py" | indent 4 }}
   tool-actions.yaml: |
 {{ .Files.Get "files/installer/tool-actions.yaml" | indent 4 }}
   tool-gate.mjs: |

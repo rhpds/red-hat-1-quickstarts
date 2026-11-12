@@ -210,6 +210,9 @@ class DemoProvisioningTests(unittest.TestCase):
         self.assertEqual({p['name'] for p in providers}, {'custom-inference', 'mailpit', 'mattermost', 'calendar'})
         sandbox = yaml.safe_load(next(v for k, v in data.items() if k.endswith('sandbox.yaml')))['spec']['sandboxes'][0]
         self.assertTrue({'mailpit', 'mattermost', 'calendar'} <= set(sandbox['providers']))
+        self.assertEqual(sandbox.get('harnessRef', {}).get('name'), 'demo-assistant')
+        self.assertTrue(settings['openshell-saw']['allowDriverConfig'])
+        self.assertIn('harness-index.yaml', data)
 
     def test_infra_authenticated_routes_and_readonly_profiles_have_no_backend_bypass(self):
         values = {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'example-only'},
@@ -217,6 +220,9 @@ class DemoProvisioningTests(unittest.TestCase):
         docs = render('infra/bootstrap', values)
         names = {(d['kind'],d['metadata']['name']):d for d in docs}
         self.assertIn(('Job','saw-demo-admin'), names)
+        ca = names.get(('ExternalSecret', 'saw-demo-ingress-ca'))
+        self.assertIsNotNone(ca, 'gateway must reuse the ingress CA stored in Vault')
+        self.assertEqual(ca['spec']['data'][0]['remoteRef']['key'], 'secret/data/hub/cluster-ingress-ca')
         for service in ['mailpit', 'radicale']:
             app = names['Application', 'saw-demo-' + service]
             child_values = yaml.safe_load(app['spec']['source']['helm']['values'])

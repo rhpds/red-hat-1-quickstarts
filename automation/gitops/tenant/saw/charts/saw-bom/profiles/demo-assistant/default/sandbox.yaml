@@ -14,6 +14,9 @@ spec:
         - mailpit
         - mattermost
         - calendar
+      harnessRef:
+        name: demo-assistant
+      harnessRequired: true
       ui:
         route: true
       # How the agent reaches its model: the `custom` provider's credential,
