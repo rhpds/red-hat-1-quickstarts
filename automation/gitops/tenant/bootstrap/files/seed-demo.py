@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import os
 import re
+import ssl
 import sys
 import urllib.error
 import urllib.parse
@@ -36,7 +37,10 @@ class Client:
             raise ValueError('set both RADICALE_USERNAME and RADICALE_PASSWORD, or neither for a local no-auth service')
         self.url, self.token = url.rstrip('/'), token
         self.basic_auth = ('Basic ' + base64.b64encode((username + ':' + password).encode()).decode()) if username else ''
-        self.opener = urllib.request.build_opener(NoRedirect)
+        context = ssl.create_default_context()
+        if os.environ.get('SAW_INGRESS_CA'):
+            context.load_verify_locations(cafile=os.environ['SAW_INGRESS_CA'])
+        self.opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPSHandler(context=context))
 
     def request(self, method, path, body=None, content_type=None, missing=False):
         headers = {}

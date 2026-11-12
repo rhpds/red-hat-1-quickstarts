@@ -15,6 +15,24 @@ data:
   demo-admin.py: |
 {{ .Files.Get "files/demo-admin.py" | indent 4 }}
 ---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: saw-demo-ingress-ca
+  namespace: openshell-agents
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: saw-demo-ingress-ca
+  data:
+    - secretKey: ca-bundle.crt
+      remoteRef:
+        key: secret/data/hub/cluster-ingress-ca
+        property: ca-bundle.crt
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -99,6 +117,7 @@ spec:
           command: [python, /scripts/source-gateway.py]
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           env:
+            - {name: SAW_INGRESS_CA, value: /ingress-ca/ca-bundle.crt}
             - {name: SOURCE_KIND, value: {{ ternary "mailpit" "calendar" (eq $source "mailpit") | quote }}}
             - {name: SOURCE_UPSTREAM, value: {{ printf "http://%s.openshell-agents.svc.cluster.local:%s" $source (ternary "8025" "5232" (eq $source "mailpit")) | quote }}}
             - {name: OIDC_ISSUER, value: {{ $demo.oidcIssuer | default $issuer | quote }}}
@@ -107,9 +126,12 @@ spec:
           resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 250m, memory: 128Mi}}
           volumeMounts:
             - {name: scripts, mountPath: /scripts, readOnly: true}
+            - {name: ingress-ca, mountPath: /ingress-ca, readOnly: true}
       volumes:
         - name: scripts
           configMap: {name: saw-demo-access}
+        - name: ingress-ca
+          secret: {secretName: saw-demo-ingress-ca}
 ---
 apiVersion: v1
 kind: Service

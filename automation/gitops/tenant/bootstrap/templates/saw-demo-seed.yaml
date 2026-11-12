@@ -105,6 +105,7 @@ spec:
           command: [python, /scripts/saw-demo-provision.py]
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           env:
+            - {name: SAW_INGRESS_CA, value: /ingress-ca/ca-bundle.crt}
             - {name: SAW_USER, value: {{ $name | quote }}}
             - {name: VAULT_PATH, value: {{ printf "hub/saw-%s" $name | quote }}}
             - {name: OIDC_ISSUER, value: {{ $demo.oidcIssuer | default $issuer | quote }}}
@@ -114,6 +115,7 @@ spec:
             - {name: work, mountPath: /work}
             - {name: token, mountPath: /vault-token, readOnly: true}
             - {name: ca, mountPath: /ca, readOnly: true}
+            - {name: ingress-ca, mountPath: /ingress-ca, readOnly: true}
       volumes:
         - name: input
           secret: {secretName: {{ printf "saw-%s-demo-input" $name }}}
@@ -125,4 +127,6 @@ spec:
           secret: {secretName: {{ ($saw.inferenceSeed | default dict).vaultTokenSecret | default "saw-vault-writer" | quote }}, items: [{key: token, path: token}]}
         - name: ca
           configMap: {name: saw-vault-service-ca}
+        - name: ingress-ca
+          configMap: {name: saw-ingress-ca}
 {{- end }}

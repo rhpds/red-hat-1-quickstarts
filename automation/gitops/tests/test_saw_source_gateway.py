@@ -3,6 +3,10 @@
 import base64
 import importlib.util
 import json
+import os
+import ssl
+import subprocess
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,6 +14,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import parse_qs
 from urllib.request import Request, urlopen
+from unittest.mock import patch
 
 PATH = Path(__file__).resolve().parents[1] / 'infra/bootstrap/files/source-gateway.py'
 
@@ -84,6 +89,35 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.request('/api/v1/messages', user=None)[0], 401)
         self.assertEqual(self.request('/api/v1/messages', password='wrong')[0], 401)
         self.assertEqual(self.calls, [])
+
+    def test_gateway_and_provisioner_trust_the_private_ingress_ca(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cert, key = Path(directory) / 'ca.pem', Path(directory) / 'key.pem'
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+                            '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
+                            '-keyout', str(key), '-out', str(cert)], check=True, capture_output=True)
+            identity = ThreadingHTTPServer(('127.0.0.1', 0), self.backend.RequestHandlerClass)
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(cert, key)
+            identity.socket = context.wrap_socket(identity.socket, server_side=True)
+            thread = threading.Thread(target=identity.serve_forever, daemon=True)
+            thread.start()
+            issuer = f'https://127.0.0.1:{identity.server_port}'
+            try:
+                with patch.dict(os.environ, {'SAW_INGRESS_CA': str(cert)}):
+                    self.gateway.RequestHandlerClass = self.module.handler('mailpit', self.upstream, issuer)
+                    self.assertEqual(self.request('/api/v1/messages')[0], 200)
+                    seed_path = PATH.parents[3] / 'tenant/bootstrap/files/seed-demo.py'
+                    spec = importlib.util.spec_from_file_location('seed_ingress_ca', seed_path)
+                    seed = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(seed)
+                    body, _ = seed.Client(issuer).request('POST', '/token',
+                        'password=LabPassword123%21', 'application/x-www-form-urlencoded')
+                    self.assertIn('access_token', json.loads(body))
+            finally:
+                identity.shutdown()
+                identity.server_close()
+                thread.join()
 
     def test_email_list_and_bodies_are_scoped_to_authenticated_identity(self):
         code, body = self.request('/api/v1/messages?limit=100')

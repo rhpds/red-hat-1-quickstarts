@@ -17,7 +17,10 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def handler(kind, upstream, issuer):
-    opener = build_opener(NoRedirect, HTTPSHandler(context=ssl.create_default_context()))
+    context = ssl.create_default_context()
+    if os.environ.get('SAW_INGRESS_CA'):
+        context.load_verify_locations(cafile=os.environ['SAW_INGRESS_CA'])
+    opener = build_opener(NoRedirect, HTTPSHandler(context=context))
 
     def fetch(url, data=None, method='GET', headers=None):
         with opener.open(Request(url, data=data, method=method, headers=headers or {}), timeout=15) as response:
