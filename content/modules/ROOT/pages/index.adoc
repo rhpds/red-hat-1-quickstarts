@@ -7,8 +7,8 @@ A QuickStart is a pre-built, deployable reference application that turns a Red H
 
 The whole lab is driven from the browser. The RAG application is already deployed and already loaded with data — you open the *RAG UI* tab and you're in. No console login, no commands, no setup in front of the customer.
 
-ifdef::openshell_password[]
-To use the optional *OpenClaw* tab, sign in with username `{user}` and password `{openshell_password}`.
+ifdef::openshell_username+openshell_password[]
+To use the optional *OpenClaw* tab, sign in with your assigned username `{openshell_username}` and password `{openshell_password}`. These credentials are specific to your lab environment.
 endif::[]
 
 == Who This Is For
@@ -21,6 +21,7 @@ This lab is written for Red Hat Solution Architects who already know their way a
 * Run the AI Quickstart RAG as a customer-facing demo using a pre-deployed instance
 * Demonstrate agentic RAG with live web search and narrate it as a customer sales story
 * Position the RAG QuickStart's value back to Red Hat OpenShift AI in a sales conversation
+* Demonstrate a governed personal assistant across email, chat and approved calendar access in the additional SAW module
 
 == The Lab at a Glance
 
@@ -46,6 +47,8 @@ This tour is four short modules, about 95 minutes end to end.
 | *AI Quickstart IT Self Service — Selling the Demo* — an AI agent that resolves a laptop-refresh request end to end over email, applying policy automatically.
 | ~20 min
 |===
+
+After the QuickStart tour, xref:module-07-saw-personal-assistant.adoc[Module 7: Secure Agent Workspace] adds approximately 45 minutes to demonstrate a personal assistant using Mailpit email, Mattermost chat and Radicale calendar. It includes a controlled prompt-injection exercise and observed governance evidence. The lab provides a prepared workspace, source accounts and demo data for this module.
 
 The AI Quickstart RAG is the flagship for this lab, but it's one of a growing catalog. More QuickStarts covering other AI and platform use cases are coming in future revisions of this course.
 
