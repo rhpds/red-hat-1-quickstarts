@@ -1,0 +1,128 @@
+{{- $saw := .Values.saw | default dict }}
+{{- $demo := $saw.demo | default dict }}
+{{- if and (ne (lower (toString $saw.enabled)) "false") (eq (lower (toString $demo.enabled)) "true") (eq (lower (toString $demo.provisioningEnabled)) "true") }}
+{{- $name := required "saw.userName is required" $saw.userName }}
+{{- $account := $saw.account | default dict }}
+{{- if ne (lower (toString $account.enabled)) "true" }}{{ fail "saw.account.enabled is required for demo provisioning" }}{{ end }}
+{{- $password := required "saw.account.password is required for demo provisioning" $account.password }}
+{{- $id := printf "saw-%s-demo-seed" $name }}
+{{- $issuer := printf "https://openshell-keycloak-ingress-saw-keycloak.apps.%s/realms/openshell" $saw.clusterDomain }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ printf "saw-%s-demo-input" $name }}
+  namespace: vault
+type: Opaque
+stringData:
+  password: {{ $password | quote }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ printf "saw-%s-demo-state" $name }}
+  namespace: vault
+type: Opaque
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $id }}
+  namespace: vault
+data:
+  demo-data.json: |
+{{ .Files.Get "files/demo-data.json" | indent 4 }}
+  seed-demo.py: |
+{{ .Files.Get "files/seed-demo.py" | indent 4 }}
+  saw-demo-provision.py: |
+{{ .Files.Get "files/saw-demo-provision.py" | indent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $id }}
+  namespace: vault
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $id }}
+  namespace: vault
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ printf "saw-%s-demo-state" $name }}]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $id }}
+  namespace: vault
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $id }}}
+subjects:
+  - {kind: ServiceAccount, name: {{ $id }}, namespace: vault}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $id }}
+  namespace: openshell-agents
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [saw-demo-admin]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $id }}
+  namespace: openshell-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $id }}}
+subjects:
+  - {kind: ServiceAccount, name: {{ $id }}, namespace: vault}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $id }}
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      labels: {saw-demo-seed: "true"}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ $id }}
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: seed
+          image: registry.access.redhat.com/ubi9/python-311@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c
+          command: [python, /scripts/saw-demo-provision.py]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          env:
+            - {name: SAW_USER, value: {{ $name | quote }}}
+            - {name: VAULT_PATH, value: {{ printf "hub/saw-%s" $name | quote }}}
+            - {name: OIDC_ISSUER, value: {{ $demo.oidcIssuer | default $issuer | quote }}}
+          volumeMounts:
+            - {name: input, mountPath: /input, readOnly: true}
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+            - {name: work, mountPath: /work}
+            - {name: token, mountPath: /vault-token, readOnly: true}
+            - {name: ca, mountPath: /ca, readOnly: true}
+      volumes:
+        - name: input
+          secret: {secretName: {{ printf "saw-%s-demo-input" $name }}}
+        - name: scripts
+          configMap: {name: {{ $id }}}
+        - name: work
+          emptyDir: {}
+        - name: token
+          secret: {secretName: {{ ($saw.inferenceSeed | default dict).vaultTokenSecret | default "saw-vault-writer" | quote }}, items: [{key: token, path: token}]}
+        - name: ca
+          configMap: {name: saw-vault-service-ca}
+{{- end }}

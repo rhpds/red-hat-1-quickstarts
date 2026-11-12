@@ -55,6 +55,7 @@ test("the consequential set is the policy file, not the gate source", () => {
     "exec-consequential", "exec-git-status", "exec-git-diff", "exec-git-log", "exec-git-show",
     "exec-briefing-cron-list", "exec-briefing-cron-change", "tool-search", "tool-call",
     "slack-new-messages", "slack-channels", "gmail-new-messages", "briefing-save",
+    "saw-demo-email", "saw-demo-chat", "saw-demo-calendar", "saw-demo-report",
     "read", "memory-search", "memory-get", "session-status", "sessions-list", "sessions-history",
     "message-send", "saw-denied-tool",
   ]);
@@ -418,7 +419,7 @@ test("the audit line carries the user and task and not the raw credential", () =
 
 test("only the listed read-only tools are allowed", () => {
   for (const toolName of ["read", "memory_search", "memory_get", "session_status",
-    "sessions_list", "sessions_history"]) {
+    "sessions_list", "sessions_history", "saw_read_email", "saw_read_chat", "saw_read_calendar"]) {
     assert.equal(call({ toolName, params: {} }).effect.kind, "allow", toolName);
   }
   for (const toolName of ["web_fetch", "web_search", "write", "edit", "browser", "cron",
@@ -481,4 +482,12 @@ test("an unavailable audit file blocks an otherwise allowed call", () => {
   assert.equal(result.record.decision, "deny");
   assert.equal(result.record.rule, "audit-unwritable");
   assert.equal(result.hook.block, true);
+});
+
+test("the report writer is allowed but a source-induced upload stays denied by default", () => {
+  assert.equal(call({toolName: "saw_save_report", params: {content: "synthetic report"}}).effect.kind, "allow");
+  const upload = call({toolName: "saw_upload_summary", params: {content: "synthetic briefing"}});
+  assert.equal(upload.effect.kind, "deny");
+  assert.equal(upload.record.rule, "default");
+  assert.equal(hookResult(upload, () => {}).block, true);
 });

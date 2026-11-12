@@ -6,3 +6,5 @@ www/
 .pi/
 .vscode/
 skills-lock.json
+# Local SAW demo session tokens; keep custom state files outside the checkout.
+.saw-demo-state.json

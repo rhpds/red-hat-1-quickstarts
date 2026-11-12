@@ -62,6 +62,18 @@ rules:
   - id: briefing-save
     tool: briefing-writer__save_briefing
     action: allow
+  - id: saw-demo-email
+    tool: saw_read_email
+    action: allow
+  - id: saw-demo-chat
+    tool: saw_read_chat
+    action: allow
+  - id: saw-demo-calendar
+    tool: saw_read_calendar
+    action: allow
+  - id: saw-demo-report
+    tool: saw_save_report
+    action: allow
   - id: read
     tool: read
     action: allow

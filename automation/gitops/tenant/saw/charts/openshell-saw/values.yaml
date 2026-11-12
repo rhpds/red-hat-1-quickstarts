@@ -445,3 +445,10 @@ networkPolicy:
   # an in-cluster inference Service or npm mirror.
   extraEgress: []
   extraIngress: []
+
+# Optional fixed-scope synthetic source tools. Enable only after all three
+# demo providers are approved, attached and ready; no credentials belong here.
+sourceReaders:
+  enabled: false
+  demoId: rh1
+  channelId: ""

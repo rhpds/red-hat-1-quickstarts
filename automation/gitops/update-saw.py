@@ -68,9 +68,21 @@ def update(source, ref, destination):
             "    # Append to HCO's generated gates; do not replace its existing feature list.\n"
             '    kubevirt.kubevirt.io/jsonpatch: >-\n'
             '      [{"op":"add","path":"/spec/configuration/developerConfiguration/featureGates/-","value":"EnableVirtioFsConfigVolumes"}]'))
-        # Keep reviewed compatibility fixes until they are included upstream.
-        for patch in json.loads((Path(__file__).parent / 'saw-patches.json').read_text()):
+        # Keep reviewed compatibility fixes and local additions on refresh.
+        integration = Path(__file__).resolve().parent
+        for patch in json.loads((integration / 'saw-patches.json').read_text()):
             file = stage / patch['file']
+            if 'source' in patch:
+                # Local additions live outside the replaced vendor tree. Refuse
+                # to overwrite a different implementation introduced upstream.
+                addition = integration / patch['source']
+                if file.exists():
+                    if file.read_bytes() != addition.read_bytes():
+                        raise ValueError(f"Upstream {patch['file']} now exists; review the local addition")
+                else:
+                    file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(addition, file)
+                continue
             text = file.read_text()
             if patch['new'] in text:
                 continue

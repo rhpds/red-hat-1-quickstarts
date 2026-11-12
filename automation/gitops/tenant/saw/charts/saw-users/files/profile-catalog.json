@@ -211,6 +211,96 @@
         }
       ]
     },
+    "demo-assistant": {
+      "description": "Synthetic personal assistant using the provisioned lab identity",
+      "harnessRequired": false,
+      "secrets": {
+        "calendar": {
+          "fields": [
+            {
+              "key": "api_key",
+              "kind": "secret",
+              "required": true,
+              "title": "API key"
+            }
+          ],
+          "provider": "calendar",
+          "providers": [
+            "calendar"
+          ]
+        },
+        "inference": {
+          "fields": [
+            {
+              "key": "api_key",
+              "kind": "secret",
+              "required": true,
+              "title": "API key"
+            },
+            {
+              "key": "url",
+              "kind": "url",
+              "required": true,
+              "title": "Endpoint base URL (OpenAI-compatible, ending in /v1)"
+            },
+            {
+              "key": "model",
+              "kind": "text",
+              "required": true,
+              "title": "Model"
+            }
+          ],
+          "provider": "custom-inference",
+          "providers": [
+            "custom-inference"
+          ]
+        },
+        "mailpit": {
+          "fields": [
+            {
+              "key": "api_key",
+              "kind": "secret",
+              "required": true,
+              "title": "API key"
+            }
+          ],
+          "provider": "mailpit",
+          "providers": [
+            "mailpit"
+          ]
+        },
+        "mattermost": {
+          "fields": [
+            {
+              "key": "api_key",
+              "kind": "secret",
+              "required": true,
+              "title": "API key"
+            }
+          ],
+          "provider": "mattermost",
+          "providers": [
+            "mattermost"
+          ]
+        }
+      },
+      "workspaces": [
+        {
+          "description": "Synthetic personal assistant using the provisioned lab identity",
+          "enabled": true,
+          "name": "default",
+          "sandboxes": [
+            {
+              "enabled": true,
+              "harnessRequired": false,
+              "name": "notebook",
+              "type": "openclaw",
+              "uiRoute": true
+            }
+          ]
+        }
+      ]
+    },
     "personal-assistant": {
       "description": "Personal assistant: NemoClaw agent with NVIDIA inference and a daily Slack and Gmail briefing",
       "harnessRequired": true,

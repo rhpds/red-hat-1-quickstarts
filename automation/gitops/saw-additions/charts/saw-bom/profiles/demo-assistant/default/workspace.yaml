@@ -1,0 +1,7 @@
+apiVersion: saw.redhat.com/v1alpha1
+kind: Workspace
+metadata:
+  name: default
+  description: Synthetic personal assistant using the provisioned lab identity
+spec:
+  enabled: true
