@@ -1,3 +1,9 @@
+# Deployment backend. VM remains the only implemented backend in this revision.
+# container uses its separate composition chart; unsupported modes never
+# silently fall back to a VM. See docs/container-workspaces.md.
+deployment:
+  mode: vm
+
 # Required — must be set at install time. Maximum 19 characters (OpenShell limit).
 sandboxName: ""
 # Operator SSH access (used by `make saw-configure` to fetch
@@ -58,6 +64,10 @@ vm:
   cores: 4
   memory: 8Gi
   diskSize: 40Gi
+  # Grace/NUMA passthrough requires dedicated CPUs and the arm64 virt machine.
+  dedicatedCpuPlacement: false
+  machineType: ""
+  architecture: ""
   # Share the installer ConfigMap, profiles, and provider Secrets over
   # virtiofs so a change is visible without restarting the VM. Off until
   # the guest units from a new cloud-init are in place: turning it on
@@ -67,6 +77,18 @@ vm:
   # Uses a guest-agent exec probe (`test -f /var/lib/saw/ready`). Off by
   # default: it needs qemu-guest-agent with guest-exec allowed in the image.
   readinessProbe: false
+  # GPU passthrough (KubeVirt hostDevices) into the gateway VM. Requires:
+  #   1. Bare-metal nodes (or a hypervisor that exposes an IOMMU). Standard
+  #      cloud GPU VMs such as AWS g5.2xlarge do not.
+  #   2. The GPU bound to vfio-pci on a node (NVIDIA GPU Operator
+  #      vfio-manager, label nvidia.com/gpu.workload.config=vm-passthrough).
+  #   3. A matching permittedHostDevices entry on the HyperConverged CR
+  #      (charts/openshift-cnv). deviceName must match that resourceName.
+  # Off by default. Set deviceName to the permittedHostDevices resourceName.
+  gpu:
+    enabled: false
+    count: 1
+    deviceName: ""
 
 # Versioned Bill of Materials for the software installed inside the VM.
 # The in-guest installer (files/installer/apply_bom.py) pulls each image by
@@ -79,27 +101,27 @@ bom:
   apiVersion: saw.redhat.com/v1alpha1
   kind: InstallerBOM
   metadata:
-    name: openshell-0-1-2-rhaiv-6
+    name: openshell-0-1-6-rhaiv-4
   spec:
     installerVersion: 0.1.0
     # OpenShell 0.1.x. Moving from 0.0.x recreates the gateway state and
     # every sandbox (the installer does it; see docs/versioned-bom-installer.md).
     openshell:
       cli:
-        version: 0.1.2-rhaiv.6
-        image: quay.io/opendatahub/odh-openshell-cli@sha256:2b6d420543ce93825092704a52127318fa90fd00df4a07d739efcd6c9f20ea57
+        version: 0.1.6-rhaiv.4
+        image: quay.io/opendatahub/odh-openshell-cli@sha256:9128f07cbb29b87472a71e09a4b164ec35ea0484712cc31028209f8d1e5291c4
       gateway:
-        version: 0.1.2-rhaiv.6
-        image: quay.io/opendatahub/odh-openshell-gateway@sha256:7bd1357f8b4c293ea6527dee2035e26dcca02fb9a87fb1521a0cd9255ec7d9fc
+        version: 0.1.6-rhaiv.4
+        image: quay.io/opendatahub/odh-openshell-gateway@sha256:bd2d7c9084b80b8d3d8ef92d00a27b963b35168fad84cd862b7f91fd9c488c3e
       supervisor:
-        version: 0.1.2-rhaiv.6
-        image: quay.io/opendatahub/odh-openshell-supervisor@sha256:f2178e5ef0948c145b7cc3a7ab3b3238aaf36d2c13a2826aae39b601e987bd7b
+        version: 0.1.6-rhaiv.4
+        image: quay.io/opendatahub/odh-openshell-supervisor@sha256:626b91a0f53393dac0d591c142b81100916aa66b4e65444b5527672b5533fe86
       # Sandbox runtime image: the podman driver mounts the supervisor from it
       # into every sandbox (gateway.toml sandbox_runtime_image). Pulled, not
       # extracted.
       sandbox:
-        version: 0.1.2-rhaiv.6
-        image: quay.io/opendatahub/odh-openshell-sandbox@sha256:acc2e36f4b05d494714aaa0a10392d2148bda3c26bbf75078f6b3c3cdf7c67ea
+        version: 0.1.6-rhaiv.4
+        image: quay.io/opendatahub/odh-openshell-sandbox@sha256:0cde11346e68485907c22d3c9b30802e52cf16e3853720a864ac8347bb68f6ef
     # NemoClaw CLI, needed by `type: nemoclaw` sandboxes (the default
     # data-science profile has one). Remove it if no profile needs it.
     # A tag is accepted here with a warning; pin a digest when one exists.
@@ -160,15 +182,23 @@ inference:
 additionalProviderSecrets:
   - web-search
 
-# A published image digest is required before rendering this chart. Build the
-# source in credential-proxy/ and set this to repo@sha256:<digest>. Use the
-# multi-arch index digest, not a per-platform digest (skopeo inspect --raw
-# docker://<image>:sha-<commit> | sha256sum).
+# Proxy mode runs this published multi-arch image (linux/amd64, linux/arm64),
+# built from credential-proxy/ by .github/workflows/credential-proxy.yml.
+# Override it only with another repo@sha256:<index digest>, e.g. a mirror for
+# a disconnected cluster (docs/container-images.md). After a credential-proxy/
+# change merges and its main build is published, `make credential-proxy-pin`
+# updates the source comment and image below; CI checks them.
 credentialProxy:
+  # false mounts full provider Secrets into the VM (agent-process isolation
+  # only; see docs/architecture-alignment.md); admin mTLS stays hardened.
+  enabled: true
+  # Increase only after rotating/revoking credentials exposed in direct mode.
+  keyGeneration: 1
+  # credential-proxy source: de58f4c031a6256dc8e9ac54e857e5588bed6808
+  image: ghcr.io/validatedpatterns-sandbox/saw-credential-proxy@sha256:73f271de2eb6166315603fbb72c800b939a14770a69c86debaabbd29a46a0f93
+  replicas: 1
   # secrets[].refresh: true mints the bound credential in this proxy from
   # the shipped provider profile. Material keys never get their own marker.
-  image: ""
-  replicas: 1
   secrets:
     - {name: inference, key: api_key, providers: [nvidia, build, openai, anthropic, custom-inference]}
     - {name: web-search, key: api_key, providers: [brave]}

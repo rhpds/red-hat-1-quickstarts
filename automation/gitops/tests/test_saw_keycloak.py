@@ -1,6 +1,7 @@
 """Regression coverage for the Admin API audience check in current Keycloak."""
 import importlib.util
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -11,6 +12,12 @@ FILES = ROOT / 'tenant/saw/charts/openshell-keycloak/files'
 
 
 def load(name):
+    for dependency in ('saw_tls', 'saw_keycloak_admin'):
+        if dependency not in sys.modules:
+            dep_spec = importlib.util.spec_from_file_location(dependency, FILES / (dependency + '.py'))
+            dep = importlib.util.module_from_spec(dep_spec)
+            sys.modules[dependency] = dep
+            dep_spec.loader.exec_module(dep)
     spec = importlib.util.spec_from_file_location(name.replace('-', '_'), FILES / (name + '.py'))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -35,7 +42,9 @@ class KeycloakBootstrapTests(unittest.TestCase):
                     def api(method, path, body=None, **kwargs):
                         calls.append((method, path, body))
                         if path == '/client-scopes':
-                            return [{'id': 'other', 'name': 'profile'}] + ([{'id': 'admin-scope', 'name': 'kc-admin-api'}] if modern else [])
+                            return [{'id': 'other', 'name': 'profile'}] + ([{'id': 'admin-scope', 'name': 'kc-admin-api', 'protocol': 'openid-connect'}] if modern else [])
+                        if path.endswith('/default-client-scopes'):
+                            return []
                         if path.endswith('/service-account-user'): return {'id': 'service-user'}
                         if path.endswith('/client-secret'): return {'value': 'test-client-secret'}
                         if path.endswith('/roles/view-users'): return {'id': 'view', 'name': 'view-users'}
@@ -50,6 +59,7 @@ class KeycloakBootstrapTests(unittest.TestCase):
                             def kc_call(url, realm, token, path, method='GET', body=None, ctx=None):
                                 return api(method, path, body)
                             with mock.patch.object(module, 'keycloak_token', return_value='test-token'), \
+                                 mock.patch.object(module, 'keycloak_endpoint', return_value=('http://keycloak.invalid', None)), \
                                  mock.patch.object(module, 'exact_client', side_effect=lambda url, realm, token, name, ctx: {'id': 'management'} if name == 'realm-management' else client), \
                                  mock.patch.object(module, 'kc_call', side_effect=kc_call):
                                 module.bootstrap()
@@ -59,7 +69,8 @@ class KeycloakBootstrapTests(unittest.TestCase):
                             with mock.patch.object(module, 'Keycloak', return_value=kc):
                                 module.bootstrap()
                     scope_calls = [(method, path) for method, path, body in calls if '/default-client-scopes/' in path]
-                    self.assertEqual(scope_calls, [('PUT', '/clients/controller-id/default-client-scopes/admin-scope')] if modern else [])
+                    expected_scopes = [('PUT', '/clients/controller-id/default-client-scopes/admin-scope')] * (2 if modern else 0)
+                    self.assertEqual(scope_calls, expected_scopes)
                     self.assertEqual((admin / 'client-secret').read_text(), 'test-client-secret')
                     role_calls = [body for method, path, body in calls if method == 'POST' and '/role-mappings/' in path]
                     self.assertEqual(role_calls, [[{'id': 'view', 'name': 'view-users'}]] if name == 'owner-resolver' else [[{'id': 'manage', 'name': 'manage-clients'}]])

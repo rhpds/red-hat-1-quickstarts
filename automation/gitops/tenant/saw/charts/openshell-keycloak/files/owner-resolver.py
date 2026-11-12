@@ -15,18 +15,28 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import saw_tls
+from saw_keycloak_admin import ensure_admin_api_scope
+
 SA = "/var/run/secrets/kubernetes.io/serviceaccount"
 USER_RE = re.compile(r"[a-z0-9]([-a-z0-9]{0,17}[a-z0-9])?")
 SUBJECT_RE = re.compile(r"[A-Za-z0-9._:@/-]{1,255}")
 
 
-class ApiError(Exception):
+class ApiError(OSError):
+    """An OSError so saw_tls.tls_context treats it as a failed cluster read."""
+
     def __init__(self, code, path):
         super().__init__(f"{path}: HTTP {code}")
         self.code = code
 
 
+def log(msg):
+    print(f"[owner-resolver] {msg}", flush=True)
+
+
 def request(url, method="GET", body=None, token=None, form=None, ctx=None):
+    saw_tls.require_https(url)
     headers = {}
     data = None
     if form is not None:
@@ -39,7 +49,9 @@ def request(url, method="GET", body=None, token=None, form=None, ctx=None):
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, context=ctx, timeout=20) as resp:
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx),
+                                             saw_tls.NoRedirect())
+        with opener.open(req, timeout=20) as resp:
             raw = resp.read()
             return json.loads(raw) if raw else None
     except urllib.error.HTTPError as exc:
@@ -65,10 +77,21 @@ def exact_client(url, realm, token, name, ctx):
     return matches[0] if matches else None
 
 
+def keycloak_endpoint():
+    """The verified Keycloak base URL and its TLS context.
+
+    KC_URL is optional: with it empty, use the operator's HTTPS Route rather
+    than the plaintext Service, so the admin credential is never sent in the
+    clear.
+    """
+    kube = Kubernetes()
+    url = (os.environ.get("KC_URL") or saw_tls.keycloak_url(
+        os.environ["KEYCLOAK_NAME"], os.environ["KEYCLOAK_NAMESPACE"], kube.call)).rstrip("/")
+    return url, saw_tls.tls_context(url, kube.call, log, os.environ.get("CA_FILE"))
+
+
 def bootstrap():
-    url = os.environ["KC_URL"].rstrip("/")
     realm, client_id = os.environ["REALM"], os.environ["CLIENT_ID"]
-    ctx = ssl.create_default_context() if url.startswith("https:") else None
     admin_dir = os.environ["ADMIN_DIR"]
     with open(f"{admin_dir}/username", encoding="utf-8") as stream:
         username = stream.read().strip()
@@ -77,6 +100,7 @@ def bootstrap():
     deadline = time.monotonic() + 1800
     while True:
         try:
+            url, ctx = keycloak_endpoint()
             token = keycloak_token(url, "master", {"grant_type": "password", "client_id": "admin-cli",
                                                     "username": username, "password": password}, ctx)
             kc_call(url, realm, token, "", ctx=ctx)
@@ -111,6 +135,9 @@ def bootstrap():
     if not roles:
         role = kc_call(url, realm, token, f"/clients/{management_id}/roles/view-users", ctx=ctx)
         kc_call(url, realm, token, path, "POST", [role], ctx)
+    ensure_admin_api_scope(
+        lambda method, path, body=None: kc_call(url, realm, token, path, method, body, ctx),
+        client["id"])
     secret = kc_call(url, realm, token, f"/clients/{client['id']}/client-secret", ctx=ctx)["value"]
     fd = os.open(os.environ["OUT"], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
@@ -182,15 +209,14 @@ def reconcile(kube, kc):
 
 
 def run():
-    url = os.environ["KC_URL"].rstrip("/")
     realm, client_id = os.environ["REALM"], os.environ["CLIENT_ID"]
-    ctx = ssl.create_default_context() if url.startswith("https:") else None
     interval = int(os.environ.get("INTERVAL", "30"))
     if not 5 <= interval <= 300:
         raise ValueError("INTERVAL must be 5 to 300 seconds")
     kube = Kubernetes()
     while True:
         try:
+            url, ctx = keycloak_endpoint()
             with open(os.environ["SECRET_FILE"], encoding="utf-8") as stream:
                 secret = stream.read().strip()
             token = keycloak_token(url, realm, {"grant_type": "client_credentials",

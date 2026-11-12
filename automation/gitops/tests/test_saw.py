@@ -217,6 +217,33 @@ class SawIntegrationTests(unittest.TestCase):
         proxy = next(d for d in vm if d['kind'] == 'Deployment' and d['metadata']['name'].endswith('credential-proxy'))
         self.assertEqual(proxy['spec']['template']['spec']['containers'][0]['image'], PROXY)
 
+    def test_tenant_can_select_container_workspace_mode(self):
+        saw = {
+            'deploymentMode': 'container', 'userName': 'user-7kzmd',
+            'clusterDomain': 'test.example',
+            'ownerSubject': '11111111-1111-4111-8111-111111111111',
+            'registration': 'abcdef0123456789',
+            'installationID': '22222222-2222-4222-8222-222222222222',
+            'profile': 'data-science',
+            'containerSite': {
+                'subject': '11111111-1111-4111-8111-111111111111',
+                'automaticEnrollment': {
+                    'enabled': False,
+                    'approvedProfiles': {'data-science': 'a' * 64},
+                },
+            },
+        }
+        docs = render(ROOT / 'tenant/bootstrap', {'rag': None, 'tenant': {'name': '7kzmd'}, 'saw': saw})
+        app = next(d for d in docs if d['kind'] == 'Application')
+        values = yaml.safe_load(app['spec']['source']['helm']['values'])
+        user = values['users'][0]
+        self.assertEqual(user['values']['deployment']['mode'], 'container')
+        self.assertNotIn('vmSource', saw)
+        self.assertEqual(values['containerSites']['user-7kzmd']['subject'], saw['ownerSubject'])
+        child_apps = child(app)
+        runtime = next(d for d in child_apps if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-user-7kzmd')
+        self.assertTrue(runtime['spec']['source']['path'].endswith('/saw-portal-container'))
+
     def test_invalid_identity_and_unpinned_inputs_fail(self):
         base = {'rag': None, 'saw': {'userName': '7kzmd', 'clusterDomain': 'test.example', 'credentialProxyImage': PROXY, 'vmSource': {'dataSource': 'golden'}}}
         with self.assertRaises(subprocess.CalledProcessError):
@@ -274,6 +301,31 @@ class SawRefreshTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get('AGNOSTICV_CLUSTER_CONFIG') and os.environ.get('AGNOSTICV_TENANT_CONFIG'), 'Set both agnosticv configuration paths')
 class SawAgnosticvTests(unittest.TestCase):
+    def test_cluster_inference_host_without_tenant_endpoint(self):
+        with tempfile.TemporaryDirectory() as temp:
+            tmp = Path(temp)
+            output, extra, play = (tmp / name for name in ('values.yaml', 'inputs.json', 'playbook.yaml'))
+            play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+                'vars_files': [os.environ['AGNOSTICV_CLUSTER_CONFIG']], 'tasks': [
+                    {'no_log': True, 'ansible.builtin.copy': {'dest': str(output), 'content': '{{ ocp4_workload_gitops_bootstrap_helm_values | to_nice_yaml }}'}}]}]))
+            env = os.environ.copy()
+            env.update({'ANSIBLE_LOCAL_TEMP': str(tmp / 'local'), 'ANSIBLE_REMOTE_TEMP': str(tmp / 'remote'), 'ANSIBLE_NOCOLOR': '1'})
+            base = {'saw_enabled': True, 'saw_keycloak_db_password': 'test-password',
+                    'openshift_cluster_ingress_domain': 'apps.test.example'}
+            for overrides, expected in [({'litellm_url': 'https://model.example/v1'}, 'model.example'),
+                                        ({'litellm_url': 'https://model.example/', 'saw_inference_host': 'override.example'}, 'override.example'),
+                                        ({}, '')]:
+                extra.write_text(json.dumps({**base, **overrides}))
+                subprocess.run(['ansible-playbook', '-i', 'localhost,', '-c', 'local', '-e', '@' + str(extra), str(play)],
+                               check=True, capture_output=True, text=True, env=env)
+                values = yaml.safe_load(output.read_text())
+                self.assertEqual(values['saw']['governance']['customInference']['host'], expected)
+                docs = render(ROOT / 'infra/bootstrap', values)
+                profiles = [d for d in docs if d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'governance-interceptor-extra-profiles']
+                self.assertEqual(bool(profiles), bool(expected))
+                if profiles:
+                    self.assertEqual(yaml.safe_load(profiles[0]['data']['custom-inference.yaml'])['endpoints'][0]['host'], expected)
+
     def test_cluster_and_tenant_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
