@@ -30,7 +30,8 @@ class DemoChartTests(unittest.TestCase):
         for service, profile in [('mailpit', 'mailpit'), ('mattermost', 'mattermost'), ('radicale', 'calendar')]:
             app = next(d for d in docs if d['metadata']['name'] == 'saw-demo-' + service)
             chart_values = yaml.safe_load(app['spec']['source']['helm'].get('values', '{}'))
-            routes = [d for d in render(ROOT / 'saw-demo/charts' / service, chart_values) if d['kind'] == 'Route']
+            chart = ROOT.parents[1] / app['spec']['source']['path']
+            routes = [d for d in render(chart, chart_values) if d['kind'] == 'Route']
             self.assertEqual(len(routes), 1)
             route = routes[0]['spec']
             host = service + '-ui-openshell-agents.apps.test.example'
@@ -41,8 +42,8 @@ class DemoChartTests(unittest.TestCase):
             self.assertFalse(any(e['port'] in (8025, 8065, 5232) for e in endpoints))
             # Route activation must not restart pods with ephemeral source data.
             deployments = lambda items: [d for d in items if d['kind'] == 'Deployment']
-            self.assertEqual(deployments(render(ROOT / 'saw-demo/charts' / service, {})),
-                             deployments(render(ROOT / 'saw-demo/charts' / service, chart_values)))
+            self.assertEqual(deployments(render(chart, {})),
+                             deployments(render(chart, chart_values)))
 
     def test_demo_profiles_are_opt_in_and_preserve_inference(self):
         chart = ROOT / 'infra/bootstrap'
@@ -78,6 +79,8 @@ class DemoChartTests(unittest.TestCase):
         for app in apps:
             self.assertEqual(app['spec']['source']['targetRevision'], 'feat/saw-personal-assistant')
             self.assertEqual(app['spec']['destination']['namespace'], 'openshell-agents')
+            service = app['metadata']['name'].removeprefix('saw-demo-')
+            self.assertEqual(app['spec']['source']['path'], 'automation/gitops/infra/saw-demo/charts/' + service)
         bindings = [d for d in docs() if d['kind'] == 'RoleBinding']
         binding = next(d for d in bindings if d['metadata']['name'] == 'saw-demo-anyuid')
         self.assertEqual(binding['subjects'], [{'kind': 'ServiceAccount', 'name': 'saw-demo', 'namespace': 'openshell-agents'}])
@@ -85,7 +88,7 @@ class DemoChartTests(unittest.TestCase):
     def test_demo_charts_use_pinned_images_and_explicit_privileged_account(self):
         for name in ('mailpit', 'mattermost', 'radicale'):
             with self.subTest(chart=name):
-                docs = render(ROOT / 'saw-demo/charts' / name, {})
+                docs = render(ROOT / 'infra/saw-demo/charts' / name, {})
                 self.assertFalse(any(d['kind'] == 'Route' for d in docs))
                 for doc in docs:
                     if doc['kind'] == 'Deployment':
@@ -217,7 +220,8 @@ class DemoProvisioningTests(unittest.TestCase):
         for service in ['mailpit', 'radicale']:
             app = names['Application', 'saw-demo-' + service]
             child_values = yaml.safe_load(app['spec']['source']['helm']['values'])
-            route = next(d for d in render('saw-demo/charts/' + service, child_values) if d['kind'] == 'Route')
+            chart = ROOT.parents[1] / app['spec']['source']['path']
+            route = next(d for d in render(chart, child_values) if d['kind'] == 'Route')
             self.assertEqual(route['spec']['to']['name'], 'saw-demo-' + service + '-access')
             self.assertIn(('NetworkPolicy','saw-demo-' + service + '-backend'), names)
         profiles = names['ConfigMap','governance-interceptor-extra-profiles']['data']

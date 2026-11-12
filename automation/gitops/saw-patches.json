@@ -86,11 +86,11 @@
   },
   {
     "file": "charts/openshell-saw/files/installer/source-readers-preflight.cjs",
-    "source": "saw-additions/charts/openshell-saw/files/installer/source-readers-preflight.cjs"
+    "source": "tenant/saw-additions/charts/openshell-saw/files/installer/source-readers-preflight.cjs"
   },
   {
     "file": "charts/openshell-saw/files/installer/source-readers.mjs",
-    "source": "saw-additions/charts/openshell-saw/files/installer/source-readers.mjs"
+    "source": "tenant/saw-additions/charts/openshell-saw/files/installer/source-readers.mjs"
   },
   {
     "file": "charts/openshell-saw/files/installer/tool-actions.yaml",
@@ -139,15 +139,15 @@
   },
   {
     "file": "charts/saw-bom/profiles/demo-assistant/default/providers.yaml",
-    "source": "saw-additions/charts/saw-bom/profiles/demo-assistant/default/providers.yaml"
+    "source": "tenant/saw-additions/charts/saw-bom/profiles/demo-assistant/default/providers.yaml"
   },
   {
     "file": "charts/saw-bom/profiles/demo-assistant/default/sandbox.yaml",
-    "source": "saw-additions/charts/saw-bom/profiles/demo-assistant/default/sandbox.yaml"
+    "source": "tenant/saw-additions/charts/saw-bom/profiles/demo-assistant/default/sandbox.yaml"
   },
   {
     "file": "charts/saw-bom/profiles/demo-assistant/default/workspace.yaml",
-    "source": "saw-additions/charts/saw-bom/profiles/demo-assistant/default/workspace.yaml"
+    "source": "tenant/saw-additions/charts/saw-bom/profiles/demo-assistant/default/workspace.yaml"
   },
   {
     "file": "charts/saw-users/files/profile-catalog.json",

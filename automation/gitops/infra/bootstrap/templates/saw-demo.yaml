@@ -34,7 +34,7 @@ spec:
   source:
     repoURL: {{ $saw.git.url | quote }}
     targetRevision: {{ $saw.git.revision | quote }}
-    path: automation/gitops/saw-demo/charts/{{ $name }}
+    path: automation/gitops/infra/saw-demo/charts/{{ $name }}
     helm:
       releaseName: saw-demo-{{ $name }}
       values: |

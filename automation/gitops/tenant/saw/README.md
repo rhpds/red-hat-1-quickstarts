@@ -193,10 +193,6 @@ as well as this repository's chart changes. Existing tenants require a resync
 after both changes are published; changing the catalog does not rerun a tenant's
 provisioning automatically.
 
-For the optional email, chat and calendar assistant, follow the
-[SAW demo setup](../../saw-demo/README.md). It uses the same tenant identity and
-inference settings, with separate source credentials and automated fixture seeding.
-
 Add a `saw` entry to the tenant bootstrap values. User names must begin with a
 letter, be DNS labels, and be at most 19 characters; using `user-<guid>` also
 works when a GUID begins with a digit.
@@ -249,7 +245,7 @@ the OpenShell password policy.
 `saw-patches.json`. It fails when an upstream edit no longer matches the expected
 patch location so the next vendor refresh cannot silently drop these fixes.
 The same manifest lists added files with a `source` path under
-`automation/gitops/saw-additions/`, outside the replaced vendor tree. Edit those
+`automation/gitops/tenant/saw-additions/`, outside the replaced vendor tree. Edit those
 source files and refresh to update their vendored copies. A different upstream
 file at an addition's destination stops the refresh for review. Existing files
 use the manifest's `old`/`new` patches.
