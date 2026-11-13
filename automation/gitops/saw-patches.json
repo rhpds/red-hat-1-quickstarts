@@ -13,5 +13,25 @@
     "file": "charts/openshell-keycloak/templates/keycloak.yaml",
     "old": "    hostname: {{ .Values.keycloak.hostname }}\n",
     "new": "    hostname: {{ if contains \"://\" .Values.keycloak.hostname }}{{ .Values.keycloak.hostname | quote }}{{ else }}{{ printf \"https://%s\" .Values.keycloak.hostname | quote }}{{ end }}\n"
+  },
+  {
+    "file": "charts/saw-bom/profiles/custom-inference/default/sandbox.yaml",
+    "old": "      providers:\n        - custom-inference\n",
+    "new": "      providers:\n        - custom-inference\n      ui:\n        route: true\n"
+  },
+  {
+    "file": "charts/openshell-saw/templates/credential-proxy.yaml",
+    "old": "{{- if hasKey $profiles \"nvidia\" -}}{{- $_ := set $profiles \"build\" (index $profiles \"nvidia\") -}}{{- end -}}\n",
+    "new": "{{- $customHost := .Values.credentialProxy.customInferenceHost | default \"\" -}}\n{{- if $customHost -}}\n  {{- if not (regexMatch \"^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$\" $customHost) -}}\n    {{- fail \"credentialProxy.customInferenceHost must be a hostname\" -}}\n  {{- end -}}\n  {{- if not (has $customHost (include \"openshell-sandbox.egressHosts\" . | fromJsonArray)) -}}\n    {{- fail \"credentialProxy.customInferenceHost must also be allowed by egress\" -}}\n  {{- end -}}\n  {{- $_ := set $profiles \"custom-inference\" (list $customHost) -}}\n{{- end -}}\n{{- if hasKey $profiles \"nvidia\" -}}{{- $_ := set $profiles \"build\" (index $profiles \"nvidia\") -}}{{- end -}}\n"
+  },
+  {
+    "file": "charts/saw-users/files/profile-catalog.json",
+    "old": "          \"description\": \"Agent workspace backed by a custom OpenAI-compatible endpoint (vLLM, Ollama, ...)\",\n          \"enabled\": true,\n          \"name\": \"default\",\n          \"sandboxes\": [\n            {\n              \"enabled\": true,\n              \"harnessRequired\": false,\n              \"name\": \"notebook\",\n              \"type\": \"openclaw\",\n              \"uiRoute\": false\n            }\n          ]\n        }\n",
+    "new": "          \"description\": \"Agent workspace backed by a custom OpenAI-compatible endpoint (vLLM, Ollama, ...)\",\n          \"enabled\": true,\n          \"name\": \"default\",\n          \"sandboxes\": [\n            {\n              \"enabled\": true,\n              \"harnessRequired\": false,\n              \"name\": \"notebook\",\n              \"type\": \"openclaw\",\n              \"uiRoute\": true\n            }\n          ]\n        }\n"
+  },
+  {
+    "file": "charts/openshell-rhdh/files/profile-catalog.json",
+    "old": "          \"description\": \"Agent workspace backed by a custom OpenAI-compatible endpoint (vLLM, Ollama, ...)\",\n          \"enabled\": true,\n          \"name\": \"default\",\n          \"sandboxes\": [\n            {\n              \"enabled\": true,\n              \"harnessRequired\": false,\n              \"name\": \"notebook\",\n              \"type\": \"openclaw\",\n              \"uiRoute\": false\n            }\n          ]\n        }\n",
+    "new": "          \"description\": \"Agent workspace backed by a custom OpenAI-compatible endpoint (vLLM, Ollama, ...)\",\n          \"enabled\": true,\n          \"name\": \"default\",\n          \"sandboxes\": [\n            {\n              \"enabled\": true,\n              \"harnessRequired\": false,\n              \"name\": \"notebook\",\n              \"type\": \"openclaw\",\n              \"uiRoute\": true\n            }\n          ]\n        }\n"
   }
 ]

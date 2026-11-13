@@ -22,6 +22,11 @@ caProvider:
 ` -}}
 {{- $esoDefaults := dict "ocpExternalSecrets" $esoConnection "global" (dict "clusterDomain" $domain "hubClusterDomain" (printf "apps.%s" $domain)) "clusterGroup" (dict "applications" (dict "vault" (dict "chart" "hashicorp-vault"))) -}}
 {{- $keycloakDefaults := dict "postgres" (dict "password" $password) "keycloak" (dict "hostname" (printf "https://openshell-keycloak-ingress-saw-keycloak.apps.%s" $domain) "userPasswords" (dict "externalSecret" (dict "enabled" true))) "ownerResolver" (dict "enabled" true) -}}
+{{- $portal := $saw.portal | default dict -}}
+{{- $portalDefaults := dict
+  "global" (dict "repoURL" $saw.git.url "targetRevision" $saw.git.revision "clusterDomain" $domain "vpArgoNamespace" $saw.gitopsNamespace)
+  "rhdh" (dict "namespace" ($portal.namespace | default "rhdh"))
+  "keycloak" (dict "namespace" "saw-keycloak" "name" "openshell-keycloak" "realm" "openshell") -}}
 {{- $apps := list
   (dict "name" "saw-vault" "release" "vault" "namespace" "vault" "path" "automation/gitops/infra/saw/vault" "wave" "0" "values" (mustMergeOverwrite $vaultDefaults (deepCopy $saw.vault.values)))
   (dict "name" "saw-external-secrets" "namespace" "external-secrets" "path" "automation/gitops/infra/saw/external-secrets" "wave" "0" "values" (mustMergeOverwrite $esoDefaults (deepCopy $saw.externalSecrets.values)))
@@ -29,6 +34,9 @@ caProvider:
   (dict "name" "saw-keycloak" "namespace" "saw-keycloak" "path" "automation/gitops/tenant/saw/charts/openshell-keycloak" "wave" "0" "values" (mustMergeOverwrite $keycloakDefaults (deepCopy $saw.keycloak.values)))
   (dict "name" "saw-governance-policy" "namespace" "openshell-agents" "path" "automation/gitops/tenant/saw/charts/governance-policy" "wave" "0" "values" dict)
   (dict "name" "saw-governance-interceptor" "namespace" "openshell-agents" "path" "automation/gitops/tenant/saw/charts/governance-interceptor" "wave" "0" "values" $saw.governance.values) -}}
+{{- if eq (lower (toString ($portal.enabled | default false))) "true" -}}
+{{- $apps = append $apps (dict "name" "saw-rhdh" "namespace" ($portal.namespace | default "rhdh") "path" "automation/gitops/tenant/saw/charts/openshell-rhdh" "wave" "2" "values" (mustMergeOverwrite $portalDefaults (deepCopy ($portal.values | default dict)))) -}}
+{{- end -}}
 {{- range $app := $apps }}
 ---
 apiVersion: argoproj.io/v1alpha1

@@ -118,6 +118,21 @@ class SawIntegrationTests(unittest.TestCase):
         docs = render(chart, {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'pass: # example'}}})
         apps = {x['metadata']['name']: x for x in docs if x['kind'] == 'Application'}
         self.assertEqual(set(apps), {'saw-vault', 'saw-external-secrets', 'saw-virtualization', 'saw-keycloak', 'saw-governance-policy', 'saw-governance-interceptor'})
+        portal_docs = render(chart, {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'pass: # example'}, 'portal': {'enabled': True}}})
+        portal = next(x for x in portal_docs if x['kind'] == 'Application' and x['metadata']['name'] == 'saw-rhdh')
+        self.assertEqual(portal['spec']['destination']['namespace'], 'rhdh')
+        portal_values = yaml.safe_load(portal['spec']['source']['helm']['values'])
+        self.assertEqual(portal_values['global']['clusterDomain'], 'test.example')
+        self.assertEqual(portal_values['global']['vpArgoNamespace'], 'openshift-gitops')
+        self.assertEqual(portal_values['rhdh']['namespace'], 'rhdh')
+        portal_sub = next(x for x in portal_docs if x['kind'] == 'Subscription' and x['metadata']['name'] == 'rhdh')
+        self.assertEqual(portal_sub['metadata']['namespace'], 'rhdh-operator')
+        self.assertEqual(portal_sub['spec']['channel'], 'fast-1.10')
+        portal_group = next(x for x in portal_docs if x['kind'] == 'OperatorGroup' and x['metadata']['name'] == 'rhdh-operator')
+        self.assertFalse(portal_group.get('spec') and portal_group['spec'].get('targetNamespaces'))
+        pipeline_sub = next(x for x in portal_docs if x['kind'] == 'Subscription' and x['metadata']['name'] == 'openshift-pipelines-operator-rh')
+        self.assertEqual(pipeline_sub['metadata']['namespace'], 'openshift-pipelines')
+        self.assertEqual(pipeline_sub['spec']['channel'], 'pipelines-1.24')
         subscriptions = {x['spec']['name']: x['spec']['channel'] for x in docs if x['kind'] == 'Subscription'}
         self.assertEqual(subscriptions, {'kubevirt-hyperconverged': 'stable', 'rhbk-operator': 'stable-v26', 'openshift-external-secrets-operator': 'stable-v1'})
         resources = {name: child(app) for name, app in apps.items()}
@@ -238,6 +253,7 @@ class SawIntegrationTests(unittest.TestCase):
         values = yaml.safe_load(app['spec']['source']['helm']['values'])
         user = values['users'][0]
         self.assertEqual(user['values']['deployment']['mode'], 'container')
+        self.assertEqual(user['vaultPrefix'], 'secret/data/hub/saw-user-7kzmd/abcdef0123456789')
         self.assertNotIn('vmSource', saw)
         self.assertEqual(values['containerSites']['user-7kzmd']['subject'], saw['ownerSubject'])
         child_apps = child(app)

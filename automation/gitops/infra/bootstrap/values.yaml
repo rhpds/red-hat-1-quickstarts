@@ -49,6 +49,17 @@ saw:
     customInference:
       host: ""
       port: 443
+  # Optional RHDH/SAW portal. It is disabled by default so existing VM-only
+  # installations remain unchanged. The portal chart expects the RHDH
+  # operator to be installed in the cluster.
+  portal:
+    enabled: false
+    namespace: rhdh
+    operatorNamespace: rhdh-operator
+    operatorChannel: fast-1.10
+    pipelinesNamespace: openshift-pipelines
+    pipelinesChannel: pipelines-1.24
+    values: {}
   operators:
     source: redhat-operators
     sourceNamespace: openshift-marketplace

@@ -27,6 +27,7 @@
 {{- $_ := set $user "ownerSubject" (required "saw.ownerSubject is required for container deployment" $saw.ownerSubject) -}}
 {{- $_ := set $user "registration" (required "saw.registration is required for container deployment" $saw.registration) -}}
 {{- $_ := set $user "installationID" (required "saw.installationID is required for container deployment" $saw.installationID) -}}
+{{- $_ := set $user "vaultPrefix" (printf "secret/data/hub/saw-%s/%s" $name $saw.registration) -}}
 {{- $_ := set $user "pruneOnRemove" true -}}
 {{- $_ := set $user "profiles" (list (required "saw.profile is required for container deployment" $saw.profile)) -}}
 {{- $_ := set $user "values" (dict "deployment" (dict "mode" "container")) -}}
