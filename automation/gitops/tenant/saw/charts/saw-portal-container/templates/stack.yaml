@@ -9,6 +9,7 @@
 {{- $trusted := printf "saw-ctl-%s" $reg }}
 {{- $archive := printf "saw-history-%s" $reg }}
 {{- $g := .Values.global }}
+{{- $chartPrefix := trimSuffix "/" ($g.chartPrefix | default "charts") }}
 {{- $ownerID := required "installationID required" .Values.installationID }}
 {{- $ui := printf "saw-ui-%s" $reg }}
 {{- $map := dict "RUNTIME" $runtime "TRUSTED" $trusted "ARCHIVE" $archive "UI" $ui "OWNER" $u "SUBJECT" .Values.ownerSubject "INSTALLATION" $ownerID "DOMAIN" $g.clusterDomain }}
@@ -126,7 +127,7 @@ spec:
   source:
     repoURL: {{ $g.repoURL | quote }}
     targetRevision: {{ $item.revision | quote }}
-    path: charts/{{ index $c 0 }}
+    path: {{ printf "%s/%s" $chartPrefix (index $c 0) | quote }}
     helm:
       {{- if and (eq $key "gateway") (eq $stack.identity.revision $g.targetRevision) (eq $item.revision $g.targetRevision) }}
       # The identity bootstrap independently checks both discovery endpoints
