@@ -22,6 +22,16 @@ caProvider:
 ` -}}
 {{- $esoDefaults := dict "ocpExternalSecrets" $esoConnection "global" (dict "clusterDomain" $domain "hubClusterDomain" (printf "apps.%s" $domain)) "clusterGroup" (dict "applications" (dict "vault" (dict "chart" "hashicorp-vault"))) -}}
 {{- $keycloakDefaults := dict "postgres" (dict "password" $password) "keycloak" (dict "hostname" (printf "https://openshell-keycloak-ingress-saw-keycloak.apps.%s" $domain) "userPasswords" (dict "externalSecret" (dict "enabled" true))) "ownerResolver" (dict "enabled" true) -}}
+{{- $portal := $saw.portal | default dict -}}
+{{- $portalValues := deepCopy ($portal.values | default dict) -}}
+{{- if hasKey $portalValues "portal" -}}
+{{- $portalValues = deepCopy ($portalValues.portal | default dict) -}}
+{{- end -}}
+{{- $portalDefaults := dict
+  "global" (dict "repoURL" $saw.git.url "targetRevision" $saw.git.revision "clusterDomain" $domain "vpArgoNamespace" $saw.gitopsNamespace "chartPrefix" "automation/gitops/tenant/saw/charts")
+  "rhdh" (dict "namespace" ($portal.namespace | default "rhdh"))
+  "keycloak" (dict "namespace" "saw-keycloak" "name" "openshell-keycloak" "realm" "openshell")
+  "portal" $portalValues -}}
 {{- $apps := list
   (dict "name" "saw-vault" "release" "vault" "namespace" "vault" "path" "automation/gitops/infra/saw/vault" "wave" "0" "values" (mustMergeOverwrite $vaultDefaults (deepCopy $saw.vault.values)))
   (dict "name" "saw-external-secrets" "namespace" "external-secrets" "path" "automation/gitops/infra/saw/external-secrets" "wave" "0" "values" (mustMergeOverwrite $esoDefaults (deepCopy $saw.externalSecrets.values)))
@@ -29,6 +39,28 @@ caProvider:
   (dict "name" "saw-keycloak" "namespace" "saw-keycloak" "path" "automation/gitops/tenant/saw/charts/openshell-keycloak" "wave" "0" "values" (mustMergeOverwrite $keycloakDefaults (deepCopy $saw.keycloak.values)))
   (dict "name" "saw-governance-policy" "namespace" "openshell-agents" "path" "automation/gitops/tenant/saw/charts/governance-policy" "wave" "0" "values" dict)
   (dict "name" "saw-governance-interceptor" "namespace" "openshell-agents" "path" "automation/gitops/tenant/saw/charts/governance-interceptor" "wave" "0" "values" $saw.governance.values) -}}
+{{- $containerGovernance := $saw.containerGovernance | default dict -}}
+{{- if eq (lower (toString ($containerGovernance.enabled | default false))) "true" -}}
+{{- $namespace := required "saw.containerGovernance.namespace is required" $containerGovernance.namespace -}}
+{{- $revision := required "saw.containerGovernance.revision is required" $containerGovernance.revision -}}
+{{- if or (eq $namespace "openshell-agents") (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $namespace)) (gt (len $namespace) 63) -}}
+{{- fail "saw.containerGovernance.namespace must be a separate DNS-label namespace" -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-f0-9]{40}$" $revision) -}}
+{{- fail "saw.containerGovernance.revision must be a full Git commit SHA" -}}
+{{- end -}}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" (default "" $containerGovernance.values.image)) -}}
+{{- fail "saw.containerGovernance.values.image must be digest pinned" -}}
+{{- end -}}
+{{- $apps = append $apps (dict "name" "saw-container-governance-policy" "namespace" $namespace "path" "automation/gitops/tenant/saw/charts/governance-policy" "wave" "0" "values" dict "revision" $revision) -}}
+{{- $apps = append $apps (dict "name" "saw-container-governance-interceptor" "namespace" $namespace "path" "automation/gitops/tenant/saw/charts/governance-interceptor" "wave" "0" "values" $containerGovernance.values "revision" $revision) -}}
+{{- end -}}
+{{- if eq (lower (toString (($saw.agentSandbox | default dict).enabled | default false))) "true" -}}
+{{- $apps = append $apps (dict "name" "saw-agent-sandbox" "namespace" "agent-sandbox-system" "path" "automation/gitops/tenant/saw/charts/agent-sandbox" "wave" "0" "values" (dict "enabled" true)) -}}
+{{- end -}}
+{{- if eq (lower (toString ($portal.enabled | default false))) "true" -}}
+{{- $apps = append $apps (dict "name" "saw-rhdh" "namespace" ($portal.namespace | default "rhdh") "path" "automation/gitops/tenant/saw/charts/openshell-rhdh" "wave" "2" "values" $portalDefaults) -}}
+{{- end -}}
 {{- range $app := $apps }}
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -42,7 +74,7 @@ spec:
   project: default
   source:
     repoURL: {{ $saw.git.url | quote }}
-    targetRevision: {{ $saw.git.revision | quote }}
+    targetRevision: {{ $app.revision | default $saw.git.revision | quote }}
     path: {{ $app.path }}
     helm:
       releaseName: {{ $app.release | default $app.name }}

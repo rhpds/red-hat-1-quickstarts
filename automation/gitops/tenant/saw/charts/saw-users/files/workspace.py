@@ -132,7 +132,7 @@ def enrolled_site(site, ws, read):
     return fresh
 
 
-def previous_child(application, appset, owner):
+def previous_child(application, appset, owner, chart_prefix="charts"):
     """Read only the public values of the child controlled by this ApplicationSet."""
     if not application:
         return None
@@ -142,7 +142,9 @@ def previous_child(application, appset, owner):
                        and ref.get("name") == appset and ref.get("controller") is True for ref in meta.get("ownerReferences", []))):
         raise WorkspaceError("cannot verify existing workspace Application ownership")
     source = application["spec"]["source"]
-    if source.get("path") != "charts/saw-users":
+    if not isinstance(chart_prefix, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*", chart_prefix):
+        raise WorkspaceError("invalid configured workspace chart prefix")
+    if source.get("path") != chart_prefix + "/saw-users":
         raise WorkspaceError("unexpected workspace Application source")
     values = json.loads(source["helm"]["values"])
     users = values["users"]

@@ -30,6 +30,7 @@
 {{- $_ := set $user "ownerSubject" (required "saw.ownerSubject is required for container deployment" $saw.ownerSubject) -}}
 {{- $_ := set $user "registration" (required "saw.registration is required for container deployment" $saw.registration) -}}
 {{- $_ := set $user "installationID" (required "saw.installationID is required for container deployment" $saw.installationID) -}}
+{{- $_ := set $user "vaultPrefix" (printf "secret/data/hub/saw-%s/%s" $name $saw.registration) -}}
 {{- $_ := set $user "pruneOnRemove" true -}}
 {{- $_ := set $user "profiles" (list (required "saw.profile is required for container deployment" $saw.profile)) -}}
 {{- $_ := set $user "values" (dict "deployment" (dict "mode" "container")) -}}
@@ -37,7 +38,7 @@
 {{- $defaults := dict
   "users" (list $user)
   "ownerResolution" (dict "enabled" true "resolverNamespace" "saw-keycloak")
-  "global" (dict "repoURL" $repo "targetRevision" $revision "vpArgoNamespace" .Values.gitops.namespace "clusterDomain" $domain)
+  "global" (dict "repoURL" $repo "targetRevision" $revision "vpArgoNamespace" .Values.gitops.namespace "clusterDomain" $domain "chartPrefix" "automation/gitops/tenant/saw/charts")
   "defaults" (dict "openshellSaw" $openshell) -}}
 {{- if eq $mode "container" -}}
 {{- $_ := set $defaults "containerSites" (dict $name (required "saw.containerSite is required for container deployment" $saw.containerSite)) -}}
@@ -50,7 +51,9 @@
 {{- $_ := set $defaults.defaults.openshellSaw.credentialProxy "customInferenceHost" $saw.inferenceHost -}}
 {{- end -}}
 {{- if eq (lower (toString (($saw.inferenceSeed | default dict).enabled))) "true" -}}
+{{- if eq $mode "vm" -}}
 {{- $_ := set (index $defaults.users 0) "vaultPrefix" (printf "secret/data/hub/saw-%s" $name) -}}
+{{- end -}}
 {{- $_ := set $defaults.global "webSearch" (dict "enabled" false) -}}
 {{- $_ := set $defaults.defaults "profiles" (list "custom-inference") -}}
 {{- end -}}

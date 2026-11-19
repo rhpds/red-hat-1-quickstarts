@@ -42,6 +42,10 @@ saw:
     values: {}
   externalSecrets:
     values: {}
+  # Install the cluster-wide Agent Sandbox controller only when this platform
+  # owns it; existing platform-managed installations must not be adopted.
+  agentSandbox:
+    enabled: false
   inferenceSeed:
     enabled: false
     sourceSecret: saw-inference
@@ -56,6 +60,24 @@ saw:
     customInference:
       host: ""
       port: 443
+  # Optional isolated governance service for container workspaces.
+  containerGovernance:
+    enabled: false
+    namespace: saw-container-governance
+    revision: ""
+    values: {}
+    imageBuildNamespace: ""
+  # Optional RHDH/SAW portal. It is disabled by default so existing VM-only
+  # installations remain unchanged. The portal chart expects the RHDH
+  # operator to be installed in the cluster.
+  portal:
+    enabled: false
+    namespace: rhdh
+    operatorNamespace: rhdh-operator
+    operatorChannel: fast-1.10
+    pipelinesNamespace: openshift-pipelines
+    pipelinesChannel: pipelines-1.24
+    values: {}
   operators:
     source: redhat-operators
     sourceNamespace: openshift-marketplace

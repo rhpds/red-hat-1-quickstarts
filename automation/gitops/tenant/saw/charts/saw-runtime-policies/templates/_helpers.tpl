@@ -36,7 +36,7 @@
 {{- if and (empty $peer.pods.podSelector.matchLabels) (empty $peer.pods.podSelector.matchExpressions) -}}{{- fail "network.egress pod peers need explicit pod selectors" -}}{{- end -}}
 {{- end -}}
 {{- range $cidr := $peer.networks | default list -}}
-{{- if has $cidr (list "0.0.0.0/0" "::/0") -}}{{- fail "network.egress cannot pass every destination; use approved explicit CIDRs" -}}{{- end -}}
+{{- if and (not $.Values.network.allowDemoBroadEgress) (has $cidr (list "0.0.0.0/0" "::/0")) -}}{{- fail "network.egress cannot pass every destination unless the demo waiver is enabled" -}}{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

@@ -14,6 +14,7 @@ kubernetes:
   workload:
     # Application image; set to an approved immutable sandbox image.
     image: ""
+    # OpenShell's sandbox bootstrap binary; separate from the SAW controller image.
     runtimeImage: quay.io/opendatahub/odh-openshell-sandbox@sha256:acc2e36f4b05d494714aaa0a10392d2148bda3c26bbf75078f6b3c3cdf7c67ea
     runtimeClassName: ""
   identity:
@@ -40,6 +41,8 @@ kubernetes:
   governance:
     endpoint: ""
   network:
+    # Explicit waiver for disposable demonstrations only.
+    allowDemoBroadEgress: false
     # All gateway egress is explicit; no namespace-wide internet allowance.
     # Include API Service + real backend IPs, DNS, OIDC, governance and proxy.
     gatewayEgress: []

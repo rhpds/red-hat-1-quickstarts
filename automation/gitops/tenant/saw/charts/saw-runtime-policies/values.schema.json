@@ -26,6 +26,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "allowDemoBroadEgress": {
+          "type": "boolean"
+        },
         "priority": {
           "type": [
             "integer",

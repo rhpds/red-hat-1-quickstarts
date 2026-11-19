@@ -25,7 +25,7 @@ spec:
   source:
     repoURL: {{ $.Values.global.repoURL | quote }}
     targetRevision: {{ required "pinned relay revision required" $r.revision | quote }}
-    path: charts/saw-workspace-relay
+    path: {{ printf "%s/saw-workspace-relay" (trimSuffix "/" ($.Values.global.chartPrefix | default "charts")) | quote }}
     helm:
       releaseName: {{ printf "ui-%s" $rid }}
       valuesObject:

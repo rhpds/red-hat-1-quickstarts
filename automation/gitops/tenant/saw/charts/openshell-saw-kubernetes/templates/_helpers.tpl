@@ -36,7 +36,7 @@ app.kubernetes.io/part-of: secure-agent-workspace
 {{- if hasKey $peer "namespaceSelector" -}}
 {{- if and (empty $peer.namespaceSelector.matchLabels) (empty $peer.namespaceSelector.matchExpressions) -}}{{- fail "gateway egress must not select all namespaces" -}}{{- end -}}
 {{- end -}}
-{{- if and $peer.ipBlock (has $peer.ipBlock.cidr (list "0.0.0.0/0" "::/0")) (not $peer.ipBlock.except) -}}{{- fail "gateway egress must not allow all addresses" -}}{{- end -}}
+{{- if and (not $k.network.allowDemoBroadEgress) $peer.ipBlock (has $peer.ipBlock.cidr (list "0.0.0.0/0" "::/0")) (not $peer.ipBlock.except) -}}{{- fail "gateway egress must not allow all addresses unless the demo waiver is enabled" -}}{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

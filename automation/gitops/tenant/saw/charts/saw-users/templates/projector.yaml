@@ -265,7 +265,7 @@ spec:
       source:
         repoURL: {{ .Values.global.repoURL | quote }}
         targetRevision: '{{ "{{" }} .revision {{ "}}" }}'
-        path: charts/saw-users
+        path: {{ printf "%s/saw-users" (trimSuffix "/" (.Values.global.chartPrefix | default "charts")) | quote }}
         helm:
           releaseName: 'workspace-{{ "{{" }} .name {{ "}}" }}'
           values: '{{ "{{" }} .workspaceValues {{ "}}" }}'

@@ -1897,7 +1897,8 @@ def serve():
                                           lambda path:kube().call("GET",path,ok404=True),catalog,
                                           lambda owner: _workspace.previous_child(kube().call("GET",
                                               f"/apis/argoproj.io/v1alpha1/namespaces/{argo_ns}/applications/portal-ws-{owner['name']}",
-                                              ok404=True), "saw-portal-workspaces", owner))
+                                              ok404=True), "saw-portal-workspaces", owner,
+                                              defaults.get("global", {}).get("chartPrefix", "charts").rstrip("/")))
             except PortalError as exc:
                 log(f"ERROR: {exc}")
                 return self._send(500, {"error": str(exc)})

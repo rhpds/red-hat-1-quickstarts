@@ -1,6 +1,11 @@
 {{- if eq (lower (toString .Values.saw.enabled)) "true" }}
 {{- $saw := .Values.saw }}
-{{- range $name := list "external-secrets-operator" "external-secrets" "openshift-cnv" "saw-keycloak" "openshell-agents" "vault" }}
+{{- $namespaces := list "external-secrets-operator" "external-secrets" "openshift-cnv" "saw-keycloak" "openshell-agents" "vault" -}}
+{{- if eq (lower (toString (($saw.portal | default dict).enabled | default false))) "true" }}
+{{- $namespaces = append $namespaces (($saw.portal | default dict).operatorNamespace | default "rhdh-operator") -}}
+{{- $namespaces = append $namespaces (($saw.portal | default dict).pipelinesNamespace | default "openshift-pipelines") -}}
+{{- end }}
+{{- range $name := $namespaces }}
 ---
 apiVersion: v1
 kind: Namespace
@@ -11,10 +16,15 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
 {{- end }}
-{{- range $operator := list
+{{- $operators := list
   (dict "namespace" "external-secrets-operator" "name" "openshift-external-secrets-operator" "channel" $saw.operators.externalSecretsChannel "allNamespaces" true)
   (dict "namespace" "openshift-cnv" "name" "kubevirt-hyperconverged" "channel" $saw.operators.virtualizationChannel)
   (dict "namespace" "saw-keycloak" "name" "rhbk-operator" "channel" $saw.operators.keycloakChannel) }}
+{{- if eq (lower (toString (($saw.portal | default dict).enabled | default false))) "true" }}
+{{- $operators = append $operators (dict "namespace" (($saw.portal | default dict).operatorNamespace | default "rhdh-operator") "name" "rhdh" "channel" (($saw.portal | default dict).operatorChannel | default "fast-1.10") "allNamespaces" true) }}
+{{- $operators = append $operators (dict "namespace" (($saw.portal | default dict).pipelinesNamespace | default "openshift-pipelines") "name" "openshift-pipelines-operator-rh" "channel" (($saw.portal | default dict).pipelinesChannel | default "pipelines-1.24") "allNamespaces" true) }}
+{{- end }}
+{{- range $operator := $operators }}
 ---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
@@ -27,8 +37,6 @@ spec:
   {{- if not $operator.allNamespaces }}
   targetNamespaces:
     - {{ $operator.namespace }}
-  {{- else }}
-  targetNamespaces: []
   {{- end }}
 ---
 apiVersion: operators.coreos.com/v1alpha1

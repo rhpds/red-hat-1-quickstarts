@@ -162,6 +162,9 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "allowDemoBroadEgress": {
+              "type": "boolean"
+            },
             "gatewayEgress": {
               "type": "array"
             },

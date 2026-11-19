@@ -6,6 +6,8 @@ gatewayServiceAccount: ""
 sandboxServiceAccount: ""
 mode: container
 network:
+  # Explicit waiver for disposable demonstrations only.
+  allowDemoBroadEgress: false
   # Required administrator allocation, unique among overlapping ANPs (0..99).
   priority: null
   # ANP egress peers/ports. The chart fixes each action to Pass, then denies

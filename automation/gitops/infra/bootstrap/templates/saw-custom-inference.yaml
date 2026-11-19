@@ -22,6 +22,18 @@ data:
 {{- $_ := set (index $profile.endpoints 0) "host" $config.host }}
 {{- $_ := set (index $profile.endpoints 0) "port" (int $config.port) }}
 {{ toYaml $profile | indent 4 }}
+{{- $container := .Values.saw.containerGovernance | default dict }}
+{{- if eq (lower (toString ($container.enabled | default false))) "true" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: governance-interceptor-extra-profiles
+  namespace: {{ required "saw.containerGovernance.namespace is required" $container.namespace }}
+data:
+  custom-inference.yaml: |
+{{ toYaml $profile | indent 4 }}
+{{- end }}
 {{- end }}
 {{- if eq (lower (toString $demo.enabled)) "true" }}
 {{- $names := list "mailpit" "mattermost" }}

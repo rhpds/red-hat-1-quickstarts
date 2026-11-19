@@ -98,7 +98,7 @@ spec:
   source:
     repoURL: {{ .Values.global.repoURL | quote }}
     targetRevision: {{ $e.revision | quote }}
-    path: charts/saw-kubernetes-controller
+    path: {{ printf "%s/saw-kubernetes-controller" (trimSuffix "/" (.Values.global.chartPrefix | default "charts")) | quote }}
     helm:
       releaseName: {{ $u }}
       valuesObject:

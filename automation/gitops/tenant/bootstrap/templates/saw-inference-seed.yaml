@@ -5,6 +5,14 @@
 {{- if not (regexMatch "^[a-z]([-a-z0-9]*[a-z0-9])?$" $name) }}
 {{- fail "saw.userName must be a lowercase DNS label" }}
 {{- end }}
+{{- $path := printf "hub/saw-%s/inference" $name -}}
+{{- if eq (lower (toString ($saw.deploymentMode | default "vm"))) "container" -}}
+{{- $registration := required "saw.registration is required for container inference" $saw.registration -}}
+{{- if not (regexMatch "^[0-9a-f]{16}$" $registration) -}}
+{{- fail "saw.registration must be 16 lowercase hex characters" -}}
+{{- end -}}
+{{- $path = printf "hub/saw-%s/%s/inference" $name $registration -}}
+{{- end -}}
 {{- $data := $seed.secretData | default dict -}}
 {{- $url := urlParse (required "saw.inferenceSeed.secretData.url is required" $data.url) -}}
 {{- $host := required "saw.inferenceHost is required" $saw.inferenceHost -}}
@@ -45,7 +53,7 @@ spec:
           image: registry.access.redhat.com/ubi9/python-311@sha256:a0bdb55576fc5b8d6704279307817828ef027e1065533ceba133fe9516003a6c
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           env:
-            - {name: VAULT_PATH, value: {{ printf "hub/saw-%s/inference" $name | quote }}}
+            - {name: VAULT_PATH, value: {{ $path | quote }}}
           command: [python, -c]
           args:
             - |

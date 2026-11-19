@@ -5,6 +5,8 @@ metadata:
   name: {{ $argocd.name | quote }}
   namespace: {{ .Release.Namespace | quote }}
 spec:
+  applicationSet:
+    enabled: true
   repo:
     # This is the maximum duration for a repo-server Git command. It must be
     # at least as long as the controller's repo-server RPC timeout below.

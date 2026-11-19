@@ -57,11 +57,11 @@ class Publications:
         except (URLError, OSError, ValueError):
             raise ProjectionError("workspace API is unavailable or invalid") from None
 
-    def previous(self, owner):
+    def previous(self, owner, chart_prefix="charts"):
         ns = os.environ["ARGO_NAMESPACE"]
         appset = os.environ["PROJECTOR_NAME"]
         app = self.get(f"/apis/argoproj.io/v1alpha1/namespaces/{ns}/applications/{appset}-{owner['name']}")
-        return workspace.previous_child(app, appset, owner)
+        return workspace.previous_child(app, appset, owner, chart_prefix)
 
 
 def parameters(config, catalog, read):
@@ -87,7 +87,11 @@ def parameters(config, catalog, read):
             raise ProjectionError("standalone container projection received another backend")
         site = sites.get(name)
         try:
-            values = workspace.project_workspace(owner, defaults, site, catalog, read, getattr(read, "previous", None))
+            previous = getattr(read, "previous", None)
+            if isinstance(read, Publications):
+                prefix = defaults.get("global", {}).get("chartPrefix", "charts").rstrip("/")
+                previous = lambda item: read.previous(item, prefix)
+            values = workspace.project_workspace(owner, defaults, site, catalog, read, previous)
         except workspace.WorkspaceError as exc:
             raise ProjectionError(str(exc)) from None
         except (KeyError, TypeError, ValueError):

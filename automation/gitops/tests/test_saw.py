@@ -2,6 +2,7 @@ import subprocess
 import unittest
 import json
 import importlib.util
+import hashlib
 import os
 import tempfile
 from unittest import mock
@@ -41,6 +42,32 @@ def assert_pod_images_pinned(test, docs):
 
 
 class SawIntegrationTests(unittest.TestCase):
+    def test_isolated_container_governance_is_pinned_and_scoped(self):
+        chart = ROOT / 'infra/bootstrap'
+        sha = 'b' * 40
+        values = {'saw': {'enabled': True, 'clusterDomain': 'test.example',
+                          'keycloak': {'postgresPassword': 'example'},
+                          'governance': {'customInference': {'host': 'model.example', 'port': 443}},
+                          'containerGovernance': {'enabled': True, 'namespace': 'saw-container-governance',
+                              'revision': sha, 'imageBuildNamespace': 'saw-builds',
+                              'values': {'image': PROXY, 'kubernetesGateways': [
+                                  {'namespace': 'saw-alice', 'gatewayId': 'alice'}]}}}}
+        docs = render(chart, values)
+        apps = {d['metadata']['name']: d for d in docs if d['kind'] == 'Application'}
+        container_app = apps['saw-container-governance-interceptor']
+        self.assertEqual(container_app['spec']['source']['targetRevision'], sha)
+        self.assertEqual(container_app['spec']['destination']['namespace'], 'saw-container-governance')
+        self.assertEqual(yaml.safe_load(container_app['spec']['source']['helm']['values'])['image'], PROXY)
+        self.assertEqual(apps['saw-governance-interceptor']['spec']['destination']['namespace'], 'openshell-agents')
+        profiles = [d for d in docs if d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'governance-interceptor-extra-profiles']
+        self.assertEqual({d['metadata']['namespace'] for d in profiles}, {'openshell-agents', 'saw-container-governance'})
+        self.assertEqual(profiles[0]['data'], profiles[1]['data'])
+        role = next(d for d in docs if d['kind'] == 'Role' and d['metadata']['name'] == 'saw-container-governance-image-pull')
+        self.assertEqual(role['rules'][0]['resourceNames'], ['governance-interceptor'])
+        values['saw']['containerGovernance']['namespace'] = 'openshell-agents'
+        with self.assertRaises(subprocess.CalledProcessError):
+            render(chart, values)
+
     def test_account_job_assigns_dashboard_admin_role(self):
         script = (ROOT / 'tenant/bootstrap/files/saw-create-user.py').read_text()
         posted = []
@@ -118,6 +145,25 @@ class SawIntegrationTests(unittest.TestCase):
         docs = render(chart, {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'pass: # example'}}})
         apps = {x['metadata']['name']: x for x in docs if x['kind'] == 'Application'}
         self.assertEqual(set(apps), {'saw-vault', 'saw-external-secrets', 'saw-virtualization', 'saw-keycloak', 'saw-governance-policy', 'saw-governance-interceptor'})
+        sandbox_docs = render(chart, {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'test-password'}, 'agentSandbox': {'enabled': True}}})
+        sandbox = next(x for x in sandbox_docs if x['kind'] == 'Application' and x['metadata']['name'] == 'saw-agent-sandbox')
+        self.assertEqual(sandbox['spec']['destination']['namespace'], 'agent-sandbox-system')
+        self.assertTrue(yaml.safe_load(sandbox['spec']['source']['helm']['values'])['enabled'])
+        portal_docs = render(chart, {'saw': {'enabled': True, 'clusterDomain': 'test.example', 'keycloak': {'postgresPassword': 'pass: # example'}, 'portal': {'enabled': True}}})
+        portal = next(x for x in portal_docs if x['kind'] == 'Application' and x['metadata']['name'] == 'saw-rhdh')
+        self.assertEqual(portal['spec']['destination']['namespace'], 'rhdh')
+        portal_values = yaml.safe_load(portal['spec']['source']['helm']['values'])
+        self.assertEqual(portal_values['global']['clusterDomain'], 'test.example')
+        self.assertEqual(portal_values['global']['vpArgoNamespace'], 'openshift-gitops')
+        self.assertEqual(portal_values['rhdh']['namespace'], 'rhdh')
+        portal_sub = next(x for x in portal_docs if x['kind'] == 'Subscription' and x['metadata']['name'] == 'rhdh')
+        self.assertEqual(portal_sub['metadata']['namespace'], 'rhdh-operator')
+        self.assertEqual(portal_sub['spec']['channel'], 'fast-1.10')
+        portal_group = next(x for x in portal_docs if x['kind'] == 'OperatorGroup' and x['metadata']['name'] == 'rhdh-operator')
+        self.assertFalse(portal_group.get('spec') and portal_group['spec'].get('targetNamespaces'))
+        pipeline_sub = next(x for x in portal_docs if x['kind'] == 'Subscription' and x['metadata']['name'] == 'openshift-pipelines-operator-rh')
+        self.assertEqual(pipeline_sub['metadata']['namespace'], 'openshift-pipelines')
+        self.assertEqual(pipeline_sub['spec']['channel'], 'pipelines-1.24')
         subscriptions = {x['spec']['name']: x['spec']['channel'] for x in docs if x['kind'] == 'Subscription'}
         self.assertEqual(subscriptions, {'kubevirt-hyperconverged': 'stable', 'rhbk-operator': 'stable-v26', 'openshift-external-secrets-operator': 'stable-v1'})
         resources = {name: child(app) for name, app in apps.items()}
@@ -238,11 +284,130 @@ class SawIntegrationTests(unittest.TestCase):
         values = yaml.safe_load(app['spec']['source']['helm']['values'])
         user = values['users'][0]
         self.assertEqual(user['values']['deployment']['mode'], 'container')
+        self.assertEqual(user['vaultPrefix'], 'secret/data/hub/saw-user-7kzmd/abcdef0123456789')
         self.assertNotIn('vmSource', saw)
         self.assertEqual(values['containerSites']['user-7kzmd']['subject'], saw['ownerSubject'])
         child_apps = child(app)
         runtime = next(d for d in child_apps if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-user-7kzmd')
         self.assertTrue(runtime['spec']['source']['path'].endswith('/saw-portal-container'))
+
+    def test_container_inference_seed_uses_registration_scoped_vault_path(self):
+        saw = {
+            'deploymentMode': 'container', 'userName': 'user-7kzmd', 'clusterDomain': 'test.example',
+            'ownerSubject': '11111111-1111-4111-8111-111111111111',
+            'registration': 'abcdef0123456789', 'installationID': '22222222-2222-4222-8222-222222222222',
+            'profile': 'custom-inference', 'inferenceHost': 'model.example',
+            'containerSite': {'subject': '11111111-1111-4111-8111-111111111111',
+                              'automaticEnrollment': {'enabled': False}},
+            'inferenceSeed': {'enabled': True, 'secretData': {
+                'api_key': 'test-key', 'model': 'test-model', 'url': 'https://model.example/v1'}},
+        }
+        docs = render(ROOT / 'tenant/bootstrap', {'rag': None, 'tenant': {'name': '7kzmd'}, 'saw': saw})
+        app = next(d for d in docs if d['kind'] == 'Application')
+        values = yaml.safe_load(app['spec']['source']['helm']['values'])
+        self.assertEqual(values['users'][0]['vaultPrefix'], 'secret/data/hub/saw-user-7kzmd/abcdef0123456789')
+        self.assertEqual(values['global']['chartPrefix'], 'automation/gitops/tenant/saw/charts')
+        job = next(d for d in docs if d['kind'] == 'Job' and d['metadata']['name'] == 'saw-user-7kzmd-inference-seed')
+        env = job['spec']['template']['spec']['containers'][0]['env']
+        self.assertEqual(env[0]['value'], 'hub/saw-user-7kzmd/abcdef0123456789/inference')
+        saw['registration'] = '../bad'
+        with self.assertRaises(subprocess.CalledProcessError):
+            render(ROOT / 'tenant/bootstrap', {'rag': None, 'tenant': {'name': '7kzmd'}, 'saw': saw})
+
+    def test_container_policy_broad_egress_requires_explicit_demo_waiver(self):
+        chart = ROOT / 'tenant/saw/charts/saw-runtime-policies'
+        fixture = yaml.safe_load((chart / 'tests/container-values.yaml').read_text())
+        fixture['network']['egress'][-1]['to'][0]['networks'] = ['0.0.0.0/0', '::/0']
+        command = ['helm', 'template', 'demo', str(chart), '--namespace', 'saw-alice', '-f', '-',
+                   '--api-versions', 'policy.networking.k8s.io/v1alpha1/AdminNetworkPolicy',
+                   '--api-versions', 'admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy']
+        with self.assertRaises(subprocess.CalledProcessError):
+            subprocess.run(command, input=yaml.safe_dump(fixture), text=True, capture_output=True, check=True)
+        fixture['network']['allowDemoBroadEgress'] = True
+        rendered = subprocess.run(command, input=yaml.safe_dump(fixture), text=True, capture_output=True, check=True)
+        self.assertIn('0.0.0.0/0', rendered.stdout)
+
+    def test_demo_container_site_renders_foundation_and_component_apps(self):
+        site_file = ROOT / 'infra/bootstrap/demo/container-site-zzt2m.yaml'
+        site = yaml.safe_load(site_file.read_text())['saw']['portal']['values']['containerSites']['user-8shcw']
+        bootstrap = site['stack']['gateway']['values']['kubernetes']['workload']['runtimeImage']
+        self.assertIn('/odh-openshell-sandbox@sha256:', bootstrap)
+        self.assertNotEqual(bootstrap, site['automaticEnrollment']['image'])
+        module_spec = importlib.util.spec_from_file_location('saw_workspace', ROOT / 'tenant/saw/charts/saw-users/files/workspace.py')
+        workspace = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(workspace)
+        catalog = json.loads((ROOT / 'tenant/saw/charts/saw-users/files/profile-catalog.json').read_text())['profiles']
+        user = {'name': 'user-8shcw', 'ownerSubject': site['subject'], 'registration': 'abcdef0123456789',
+                'installationID': '22222222-2222-4222-8222-222222222222', 'profiles': ['custom-inference'],
+                'vaultPrefix': 'secret/data/hub/saw-user-8shcw/abcdef0123456789', 'pruneOnRemove': True,
+                'customInferenceURL': site['customInferenceURL'], 'values': {'deployment': {'mode': 'container'}}}
+        defaults = {'global': {'clusterDomain': 'cluster-zzt2m.dyn.redhatworkshops.io',
+                               'repoURL': 'https://github.com/rhpds/red-hat-1-quickstarts.git',
+                               'targetRevision': site['stack']['gateway']['revision'], 'vpArgoNamespace': 'openshift-gitops',
+                               'chartPrefix': 'automation/gitops/tenant/saw/charts', 'webSearch': {'enabled': False}}}
+        values = workspace.project_workspace(user, defaults, site, catalog)
+        apps = render(ROOT / 'tenant/saw/charts/saw-users', values, namespace='openshell-agents')
+        bom = next(d for d in apps if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-user-8shcw-bom')
+        profile_map = next(d for d in child(bom) if d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'saw-bom-profiles')
+        digest = hashlib.sha256(json.dumps(profile_map['data'], sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
+        self.assertEqual(digest, site['automaticEnrollment']['approvedProfiles']['custom-inference'])
+        runtime = next(d for d in apps if d['kind'] == 'Application' and d['metadata']['name'] == 'saw-user-8shcw')
+        foundation = child(runtime)
+        components = [d for d in foundation if d['kind'] == 'Application']
+        self.assertEqual(len(components), 5)
+        self.assertTrue(all(d['spec']['source']['path'].startswith('automation/gitops/tenant/saw/charts/') for d in components))
+        self.assertTrue(any(d['kind'] == 'ExternalSecret' and d['metadata']['name'] == 'inference' for d in foundation))
+        for component in components:
+            source = component['spec']['source']
+            rendered = subprocess.run(['helm', 'template', source['helm']['releaseName'], str(ROOT.parents[1] / source['path']),
+                            '--namespace', component['spec']['destination']['namespace'], '-f', '-',
+                            '--api-versions', 'agents.x-k8s.io/v1beta1/Sandbox',
+                            '--api-versions', 'policy.networking.k8s.io/v1alpha1/AdminNetworkPolicy',
+                            '--api-versions', 'admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy'],
+                           input=yaml.safe_dump(source['helm']['valuesObject']), text=True, capture_output=True, check=True)
+            if component['metadata']['name'].endswith('-gateway'):
+                self.assertIn('sandbox_runtime_image = "' + bootstrap + '"', rendered.stdout)
+            if component['metadata']['name'].endswith('-policy'):
+                self.assertIn(bootstrap, rendered.stdout)
+
+    def test_custom_inference_container_request_uses_only_inference_secret(self):
+        chart = ROOT / 'tenant/saw/charts/openshell-rhdh/files'
+        catalog = json.loads((chart / 'profile-catalog.json').read_text())['profiles']
+        self.assertEqual(catalog, json.loads((ROOT / 'tenant/saw/charts/saw-users/files/profile-catalog.json').read_text())['profiles'])
+        module_spec = importlib.util.spec_from_file_location('saw_portal', chart / 'portal.py')
+        portal = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(portal)
+        data = {'deploymentMode': 'container', 'profile': 'custom-inference',
+                'inference.api_key': 'test-key', 'inference.url': 'https://model.example/v1',
+                'inference.model': 'test-model'}
+        with mock.patch.dict(os.environ, {'SAW_DEPLOYMENT_MODES': '["vm", "container"]'}):
+            profile, secrets = portal.parse_request(data, catalog)
+        self.assertEqual(profile, 'custom-inference')
+        self.assertEqual(set(secrets), {'inference'})
+        boundary = {'inferenceBaseURL': 'https://model.example/v1', 'allowHosts': ['model.example']}
+        self.assertEqual(portal.approved_endpoint(catalog[profile], secrets, boundary), 'https://model.example/v1')
+        secrets['inference']['url'] = 'https://other.example/v1'
+        with self.assertRaises(portal.PortalError):
+            portal.approved_endpoint(catalog[profile], secrets, boundary)
+
+    def test_container_previous_child_checks_configured_chart_prefix(self):
+        chart = ROOT / 'tenant/saw/charts/saw-users/files/workspace.py'
+        module_spec = importlib.util.spec_from_file_location('saw_workspace_path_test', chart)
+        workspace = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(workspace)
+        owner = {'name': 'alice', 'installationID': 'install', 'registration': 'registration', 'ownerSubject': 'subject'}
+        revision = 'a' * 40
+        prefix = 'automation/gitops/tenant/saw/charts'
+        values = {'users': [owner], 'global': {'targetRevision': revision}}
+        app = {'metadata': {'labels': {'openshell.pattern/owner': 'alice'}, 'ownerReferences': [
+            {'apiVersion': 'argoproj.io/v1alpha1', 'kind': 'ApplicationSet', 'name': 'portal', 'controller': True}]},
+            'spec': {'source': {'path': prefix + '/saw-users', 'targetRevision': revision,
+                                'helm': {'values': json.dumps(values)}}}}
+        self.assertEqual(workspace.previous_child(app, 'portal', owner, prefix), values)
+        with self.assertRaises(workspace.WorkspaceError):
+            workspace.previous_child(app, 'portal', owner, 'charts')
+        with self.assertRaises(workspace.WorkspaceError):
+            workspace.previous_child(app, 'portal', owner, '../charts')
 
     def test_invalid_identity_and_unpinned_inputs_fail(self):
         base = {'rag': None, 'saw': {'userName': '7kzmd', 'clusterDomain': 'test.example', 'credentialProxyImage': PROXY, 'vmSource': {'dataSource': 'golden'}}}

@@ -1,0 +1,35 @@
+{{- $saw := .Values.saw -}}
+{{- $container := $saw.containerGovernance | default dict -}}
+{{- if and (eq (lower (toString $saw.enabled)) "true") (eq (lower (toString ($container.enabled | default false))) "true") }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ required "saw.containerGovernance.namespace is required" $container.namespace }}
+---
+{{- end }}
+{{- if and (eq (lower (toString $saw.enabled)) "true") (eq (lower (toString ($container.enabled | default false))) "true") $container.imageBuildNamespace }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: saw-container-governance-image-pull
+  namespace: {{ $container.imageBuildNamespace }}
+rules:
+  - apiGroups: [image.openshift.io]
+    resources: [imagestreams/layers]
+    resourceNames: [governance-interceptor]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: saw-container-governance-image-pull
+  namespace: {{ $container.imageBuildNamespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: saw-container-governance-image-pull
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: {{ required "saw.containerGovernance.namespace is required" $container.namespace }}
+{{- end }}
