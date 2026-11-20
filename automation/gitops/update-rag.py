@@ -84,6 +84,74 @@ def fix_llamastack_secret_reference(chart):
         archive.write_bytes(buffer.getvalue())
 
 
+INGESTION_TASKS = Path(__file__).with_name("rag-patches") / "ingestion-pipeline-tasks.py"
+INGESTION_TASKS_CONFIGMAP = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingestion-pipeline-tasks
+data:
+  tasks.py: |-
+{{ .Files.Get "files/tasks.py" | indent 4 }}
+"""
+INGESTION_TASKS_VALUES = {
+    b"volumes: {}": b"""volumes:
+  # rh1: patched pipeline tasks (see automation/gitops/rag-patches)
+  - name: rh1-tasks
+    configMap:
+      name: ingestion-pipeline-tasks""",
+    b"volumeMounts: {}": b"""volumeMounts:
+  - name: rh1-tasks
+    mountPath: /app/ingestion_pipeline/pipelines/tasks.py
+    subPath: tasks.py
+    readOnly: true""",
+}
+
+
+def patch_ingestion_pipeline_tasks(chart):
+    """Mount a patched tasks.py over the ingestion-pipeline image's copy.
+
+    The pipeline steps run code the service compiles from tasks.py, so a
+    patched file in the service pod fixes the steps without a new image. The
+    patch gives the Llama Stack client a long timeout and no retries for the
+    synchronous file attach.
+    """
+    lock = yaml.safe_load((chart / "Chart.lock").read_text())
+    dep = next((d for d in lock["dependencies"] if d["name"] == "ingestion-pipeline"), None)
+    if dep is None:
+        return
+    if str(dep["version"]) != "0.7.5":
+        raise ValueError("ingestion-pipeline changed; review rag-patches/ingestion-pipeline-tasks.py against the new image")
+    archive = chart / "charts" / f'ingestion-pipeline-{dep["version"]}.tgz'
+    extra = {
+        "ingestion-pipeline/files/tasks.py": INGESTION_TASKS.read_bytes(),
+        "ingestion-pipeline/templates/configmap-tasks.yaml": INGESTION_TASKS_CONFIGMAP.encode(),
+    }
+    with tarfile.open(archive, "r:gz") as source:
+        entries = [(item, source.extractfile(item).read() if item.isfile() else None)
+                   for item in source.getmembers() if item.name not in extra]
+    buffer = io.BytesIO()
+    found = False
+    with gzip.GzipFile(fileobj=buffer, mode="wb", filename="", mtime=0) as gz:
+        with tarfile.open(fileobj=gz, mode="w") as out:
+            for item, data in entries:
+                if item.name == "ingestion-pipeline/values.yaml":
+                    for old, new in INGESTION_TASKS_VALUES.items():
+                        if data.count(old) == 1:
+                            data = data.replace(old, new)
+                        elif data.count(new) != 1:
+                            raise ValueError("ingestion-pipeline values changed; review the tasks.py mount")
+                    item.size = len(data)
+                    found = True
+                out.addfile(item, io.BytesIO(data) if data is not None else None)
+            for name, data in extra.items():
+                info = tarfile.TarInfo(name)
+                info.size, info.mode = len(data), 0o644
+                out.addfile(info, io.BytesIO(data))
+    if not found:
+        raise ValueError("ingestion-pipeline values.yaml not found")
+    archive.write_bytes(buffer.getvalue())
+
+
 def update(source, ref, destination, dependency_dir=None):
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="rag-update-", dir=destination) as tmp:
@@ -150,6 +218,7 @@ def update(source, ref, destination, dependency_dir=None):
             run("helm", "dependency", "build", str(chart))
         verify_dependencies(chart)
         fix_llamastack_secret_reference(chart)
+        patch_ingestion_pipeline_tasks(chart)
         image_pins.apply(chart)
         (stage / "rag-source.json").write_text(json.dumps({"repository": UPSTREAM, "commit": commit}, indent=2) + "\n")
         # Keep backups until all staged paths are installed, and roll back on failure.
