@@ -84,6 +84,53 @@ def fix_llamastack_secret_reference(chart):
         archive.write_bytes(buffer.getvalue())
 
 
+LLAMASTACK_ANCHOR = "llama-stack:\n  enabled: true\n"
+LLAMASTACK_SETTINGS = """  # Llama Stack parses and embeds every ingested PDF in-process, and the five
+  # ingestion pipelines run at the same time. Keep the namespace-default
+  # ceiling (2 CPU / 4Gi) but reserve the memory ingestion needs, so a busy
+  # node doesn't evict the pod mid-ingestion.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  # Give a busy pod time to answer before it is restarted or taken out of
+  # the Service.
+  livenessProbe:
+    timeoutSeconds: 30
+    failureThreshold: 6
+  readinessProbe:
+    timeoutSeconds: 15
+    failureThreshold: 6
+"""
+
+
+def set_llamastack_resources(chart):
+    """Add local Llama Stack resources and probe timeouts to the RAG values.
+
+    Ingestion embeds documents inside the Llama Stack pod, which needs more
+    than the namespace defaults and slower probes. Upstream values.yaml is
+    replaced on every refresh, so these settings are re-applied here.
+    """
+    lock = yaml.safe_load((chart / "Chart.lock").read_text())
+    if not any(dep["name"] == "llama-stack" for dep in lock["dependencies"]):
+        return
+    values = chart / "values.yaml"
+    raw = values.read_text()
+    block = LLAMASTACK_ANCHOR + LLAMASTACK_SETTINGS
+    if block in raw:
+        return
+    if raw.count(LLAMASTACK_ANCHOR) != 1:
+        raise ValueError("Upstream RAG llama-stack values changed; review the local resources")
+    current = yaml.safe_load(raw).get("llama-stack") or {}
+    clashes = sorted({"resources", "livenessProbe", "readinessProbe"} & set(current))
+    if clashes:
+        raise ValueError(f"Upstream RAG now sets llama-stack {', '.join(clashes)}; review the local resources")
+    values.write_text(raw.replace(LLAMASTACK_ANCHOR, block))
+
+
 INGESTION_TASKS = Path(__file__).with_name("rag-patches") / "ingestion-pipeline-tasks.py"
 INGESTION_TASKS_CONFIGMAP = """apiVersion: v1
 kind: ConfigMap
@@ -219,6 +266,7 @@ def update(source, ref, destination, dependency_dir=None):
         verify_dependencies(chart)
         fix_llamastack_secret_reference(chart)
         patch_ingestion_pipeline_tasks(chart)
+        set_llamastack_resources(chart)
         image_pins.apply(chart)
         (stage / "rag-source.json").write_text(json.dumps({"repository": UPSTREAM, "commit": commit}, indent=2) + "\n")
         # Keep backups until all staged paths are installed, and roll back on failure.

@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 SCRIPT = Path(__file__).resolve().parents[1] / "update-rag.py"
 spec = importlib.util.spec_from_file_location("update_rag", SCRIPT)
 update_rag = importlib.util.module_from_spec(spec)
@@ -149,6 +151,24 @@ class RefreshTests(unittest.TestCase):
             self.assertIn(b"'{{ $model.url }}/models#{{ $model.apiToken }}'", tf.extractfile("llama-stack/templates/deployment.yaml").read())
         update_rag.fix_llamastack_secret_reference(chart)
         self.assertEqual(before, archive.read_bytes())
+
+    def test_llamastack_resources_are_added_and_repeatable(self):
+        chart = Path(self.temp.name) / "chart"
+        chart.mkdir()
+        (chart / "Chart.lock").write_text("dependencies:\n- name: llama-stack\n  version: 1.0.0\n")
+        values = chart / "values.yaml"
+        values.write_text("llama-stack:\n  enabled: true\n  secrets: {}\n")
+        update_rag.set_llamastack_resources(chart)
+        llamastack = yaml.safe_load(values.read_text())["llama-stack"]
+        self.assertEqual(llamastack["resources"]["limits"], {"cpu": "2", "memory": "4Gi"})
+        self.assertEqual(llamastack["livenessProbe"]["timeoutSeconds"], 30)
+        self.assertEqual(llamastack["secrets"], {})
+        before = values.read_text()
+        update_rag.set_llamastack_resources(chart)
+        self.assertEqual(before, values.read_text())
+        values.write_text("llama-stack:\n  enabled: true\n  resources: {}\n")
+        with self.assertRaises(ValueError):
+            update_rag.set_llamastack_resources(chart)
 
 
 if __name__ == "__main__":
