@@ -3,7 +3,7 @@
 
 Your customer doesn't want a slide about AI. They want to see it work on their problem. This lab shows you how to deliver that moment — fast — using Red Hat AI Quickstarts.
 
-A QuickStart is a pre-built, deployable reference application that turns a Red Hat AI capability into something a customer can watch run. For a Solution Architect, it's a selling tool: no weeks of setup, no custom build, just a working system you can demo and then tie back to the platform underneath it. In the next 75 minutes you'll learn what a QuickStart is, run the flagship AI Quickstart RAG as a live customer demo, and shape the agentic story that moves a deal forward.
+A QuickStart is a pre-built, deployable reference application that turns a Red Hat AI capability into something a customer can see and use. For a Solution Architect, it's a selling tool: no weeks of setup, no custom build, just a working system you can demo and then tie back to the platform underneath it. In the next 75 minutes you'll learn what a QuickStart is, run the flagship AI Quickstart RAG as a live customer demo, and shape the agentic story that moves a deal forward.
 
 The whole lab is driven from the browser. The RAG application is already deployed and already loaded with data — you open the *RAG UI* tab and you're in. No console login, no commands, no setup in front of the customer.
 
@@ -21,7 +21,7 @@ This lab is written for Red Hat Solution Architects who already know their way a
 * Run the AI Quickstart RAG as a customer-facing demo using a pre-deployed instance
 * Demonstrate agentic RAG with live web search and narrate it as a customer sales story
 * Position the RAG QuickStart's value back to Red Hat OpenShift AI in a sales conversation
-* Demonstrate a governed personal assistant across email, chat and approved calendar access in the additional SAW module
+* Demonstrate a governed personal assistant across email, chat and approved calendar access in the additional SAW (Secure Agent Workspace) module
 
 == The Lab at a Glance
 

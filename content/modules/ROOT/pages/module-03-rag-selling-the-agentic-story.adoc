@@ -24,7 +24,7 @@ Frame it for the customer this way. Direct mode is the fast, single-turn, citabl
 
 You'll switch the assistant into agentic mode and show it reasoning across steps against the customer's knowledge base.
 
-. In the right pane, click the *RAG UI* tab if it isn't already open.
+. In the right pane, click the *RAG UI* tab if it isn't already open. To clear the existing conversation from the prior exercise, click *Clear Chat & Reset Config* at the bottom of the left panel.
 . In the left sidebar, set *Processing mode* to *Agent-based*.
 +
 image::agent-mode.png[Setting Processing mode to Agent-based in the sidebar, role=expand]

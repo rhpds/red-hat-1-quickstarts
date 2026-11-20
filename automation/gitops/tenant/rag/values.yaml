@@ -167,6 +167,13 @@ pgvector:
 
 llama-stack:
   enabled: true
+  models:
+    remotellm:
+      # "0" stops Llama Stack adding max_tokens next to the max_completion_tokens
+      # that agent mode sends. MaaS rejected requests with both when RAG ran on
+      # gpt-oss-120b (LiteLLM -> Vertex AI). Keep it a string: the chart's
+      # `default 4096` treats a numeric 0 as unset.
+      maxTokens: "0"
   # Llama Stack parses and embeds every ingested PDF in-process, and the five
   # ingestion pipelines run at the same time. Keep the namespace-default
   # ceiling (2 CPU / 4Gi) but reserve the memory ingestion needs, so a busy

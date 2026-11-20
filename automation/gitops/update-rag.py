@@ -85,7 +85,14 @@ def fix_llamastack_secret_reference(chart):
 
 
 LLAMASTACK_ANCHOR = "llama-stack:\n  enabled: true\n"
-LLAMASTACK_SETTINGS = """  # Llama Stack parses and embeds every ingested PDF in-process, and the five
+LLAMASTACK_SETTINGS = """  models:
+    remotellm:
+      # "0" stops Llama Stack adding max_tokens next to the max_completion_tokens
+      # that agent mode sends. MaaS rejected requests with both when RAG ran on
+      # gpt-oss-120b (LiteLLM -> Vertex AI). Keep it a string: the chart's
+      # `default 4096` treats a numeric 0 as unset.
+      maxTokens: "0"
+  # Llama Stack parses and embeds every ingested PDF in-process, and the five
   # ingestion pipelines run at the same time. Keep the namespace-default
   # ceiling (2 CPU / 4Gi) but reserve the memory ingestion needs, so a busy
   # node doesn't evict the pod mid-ingestion.
@@ -108,11 +115,12 @@ LLAMASTACK_SETTINGS = """  # Llama Stack parses and embeds every ingested PDF in
 
 
 def set_llamastack_resources(chart):
-    """Add local Llama Stack resources and probe timeouts to the RAG values.
+    """Add local Llama Stack settings to the RAG values.
 
     Ingestion embeds documents inside the Llama Stack pod, which needs more
-    than the namespace defaults and slower probes. Upstream values.yaml is
-    replaced on every refresh, so these settings are re-applied here.
+    than the namespace defaults and slower probes, and the MaaS model needs
+    maxTokens "0". Upstream values.yaml is replaced on every refresh, so these
+    settings are re-applied here.
     """
     lock = yaml.safe_load((chart / "Chart.lock").read_text())
     if not any(dep["name"] == "llama-stack" for dep in lock["dependencies"]):
@@ -125,7 +133,7 @@ def set_llamastack_resources(chart):
     if raw.count(LLAMASTACK_ANCHOR) != 1:
         raise ValueError("Upstream RAG llama-stack values changed; review the local resources")
     current = yaml.safe_load(raw).get("llama-stack") or {}
-    clashes = sorted({"resources", "livenessProbe", "readinessProbe"} & set(current))
+    clashes = sorted({"models", "resources", "livenessProbe", "readinessProbe"} & set(current))
     if clashes:
         raise ValueError(f"Upstream RAG now sets llama-stack {', '.join(clashes)}; review the local resources")
     values.write_text(raw.replace(LLAMASTACK_ANCHOR, block))
