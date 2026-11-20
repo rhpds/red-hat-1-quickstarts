@@ -1,7 +1,7 @@
 = AI Quickstart IT Self Service — Selling the Demo
 :imagesdir: ../images
 
-This is the next demo in the kit, and it answers a question every customer asks after the RAG story: "Great, it can answer my people — but can it actually *do* the work?" In about 20 minutes you'll run the IT Self-Service Agent as a live demo and land the moment that sells it: an employee asks for a laptop refresh in plain language, and the agent checks eligibility, shows the right options for their region, takes the approval, and files the ticket — end to end, in one conversation.
+This is the next demo in the kit, and it answers a question every customer asks after the RAG story: "Great, it can answer questions — but can it actually *do* the work?" In about 20 minutes you'll run the IT Self-Service Agent as a live demo and land the moment that sells it: an employee asks for a laptop refresh in plain language, and the agent checks eligibility, shows the right options for their region, takes the approval, and files the ticket — end to end, in one conversation.
 
 The app is already deployed. You reach it by clicking one tab. No login, no console, no commands — a Solution Architect gets to the "wow" in seconds, with zero setup in front of the customer.
 

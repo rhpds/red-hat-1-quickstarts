@@ -39,7 +39,7 @@ The selling beat here: nothing was installed, nothing was configured. The enviro
 
 === Verify
 
-You see the chat input box at the bottom and the left sidebar on the left. The app is ready to take a question.
+You see the chat input box at the bottom and the sidebar on the left. The app is ready to take a question.
 
 == Exercise 2: The Core Demo — Generic vs. Grounded
 
@@ -136,6 +136,6 @@ Before moving on, confirm you can do each of these:
 
 == Conclusion
 
-You just ran the flagship demo. The script is short on purpose: tell the FantaCo story, ask one question without data, ask it again with the customer's data, and let the citations do the convincing. That contrast — generic versus grounded — is the whole sale.
+You just ran the flagship demo. The script is short on purpose: tell the FantaCo story, ask questions with and without customer data and let the citations do the convincing. That contrast — generic versus grounded — is the whole sale.
 
 In the next module you'll go deeper into the RAG quickstart and shape the agentic story for customers who want the assistant to do more than answer.
