@@ -1,0 +1,138 @@
+= AI Quickstart PPE Compliance Monitor — Training a New Model
+:imagesdir: ../images
+
+In the last module you watched off-the-shelf and custom models run in the app. Customers will ask the next question right away: "Can it detect *our* things?" In this module you'll answer it by training a new model that detects identification badges.
+
+You'll use two tools that come with the QuickStart: *Label Studio* to draw boxes on images, and *JupyterLab* to train a YOLO model from those boxes.
+
+Allow approximately 25 minutes.
+
+== What You'll Take Away
+
+* Label objects with bounding boxes in Label Studio and export them in YOLO format
+* Train a YOLO model on a small badge dataset in JupyterLab
+* Test the trained model on an image it has never seen
+* Explain to a customer how little data it takes to get started
+
+== The Story
+
+Off-the-shelf models know common things such as people, cars and birds. They don't know a customer's badge design, part number or product defect. Training a custom model used to mean a data science project. With this QuickStart it is three steps: label a few images, run a notebook, deploy the result.
+
+== Exercise 1: Label Images in Label Studio
+
+Labeling teaches the model what to look for. You'll label a few images so you know how it works, then train on a prepared set in the next exercise.
+
+. Download two or three badge images from the link:https://github.com/rh-ai-quickstart/multimodal-compliance-monitor/tree/main/training/upload/train_images[sample training images,window=blank] to your computer.
+. Open link:https://ppe-{guid}-ls-user-{guid}-ppe.{openshift_cluster_ingress_domain}/[Label Studio,window=blank]. The first time, click *Sign up* and create an account with any email address and password. The account only exists in your lab.
+. Click *Create Project* and name it `Badges`.
+. On the *Data Import* tab, click *Upload Files* and select the images you downloaded.
+. On the *Labeling Setup* tab, choose *Object Detection with Bounding Boxes*. Delete the sample labels, add one label named `Badge` and click *Save*.
+. Click *Label All Tasks*. Select the `Badge` label, draw a tight box around each badge in the image and click *Submit*. Repeat for each image.
+. Back in the project, click *Export*, choose *YOLO* and click *Export*.
+
+The export contains one `.txt` file per image. Each line is one box: a class number and four numbers for the box position.
+
+=== Verify
+
+Your images show as completed in the project, and the YOLO export downloads as a zip file.
+
+== Exercise 2: Train the Model in JupyterLab
+
+Labeling a full dataset takes time, so this exercise uses 15 training images and 6 validation images that are already labeled.
+
+. Open link:https://ppe-{guid}-jupyter-user-{guid}-ppe.{openshift_cluster_ingress_domain}/[JupyterLab,window=blank].
+ifdef::ppe_jupyter_token[]
+. Sign in with the token `{ppe_jupyter_token}`.
+endif::[]
+ifndef::ppe_jupyter_token[]
+. Sign in with the token `changeme`.
+endif::[]
+. In the file browser, open the `training` folder, then open `yolo_training.ipynb`.
+. Click the first cell of the notebook, then click *+* in the toolbar to insert a new cell. Paste this code and press *Shift+Enter* to download the labeled dataset:
++
+[source,python]
+----
+import urllib.request
+from pathlib import Path
+
+BASE = ("https://raw.githubusercontent.com/rh-ai-quickstart/multimodal-compliance-monitor/"
+        "30e4a67d1913cae1be83764dfc1b35e22872cee9/training/upload")
+FILES = {
+    "train_images": [f"badge-{i}.jpg" for i in (1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 15, 16)]
+                    + ["badge-4.webp", "badge-12.png", "badge-13.webp"],
+    "train_labels": [f"badge-{i}.txt" for i in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16)],
+    "val_images": ["Retail.webp", "conference.jpg", "images1.jpg", "images2.png",
+                   "images4.jpg", "multiplebadges.jpg"],
+    "val_labels": ["conference.txt", "images1.txt", "images4.txt", "multiplebadges.txt"],
+}
+
+for folder, names in FILES.items():
+    dest = Path("upload") / folder
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        urllib.request.urlretrieve(f"{BASE}/{folder}/{name}", dest / name)
+    print(f"{folder}: {len(names)} files")
+----
++
+The output shows `train_images: 15 files` and `val_images: 6 files`.
+
+. Run the *1. Configuration & Create Upload Folders* cell. When it asks for class names and the output folder, press *Enter* to accept the defaults (`Badge` and `./yolo_dataset`).
+. Run the next cells in order, through *4. Generate Dataset YAML*. The cell that looks for `upload.tar.gz` reports that no file was found; that is expected because you already downloaded the images.
+. In the *5. Train YOLO Model* cell, change `epochs=100` to `epochs=20` so training fits in the lab time. Run the cell.
+
+Training starts from a small pretrained model (`yolov8n.pt`) and adjusts it to recognize badges. Each epoch is one pass over the images, and the output prints a progress line for each one. On the lab's CPU this takes a few minutes.
+
+Tell the customer: "Fifteen labeled pictures and a few minutes of CPU time. No GPU, no data science team."
+
+=== Verify
+
+The cell finishes with `✓ TRAINING COMPLETE` and the path `runs/detect/badge-demo/weights/best.pt`.
+
+[NOTE]
+====
+If you run the training cell more than once, the new results are saved as `badge-demo2`, `badge-demo3` and so on. Use the path printed at the end of the training output.
+====
+
+== Exercise 3: Test the New Model
+
+. Add a new cell at the end of the notebook, paste this code and run it:
++
+[source,python]
+----
+from IPython.display import Image, display
+from ultralytics import YOLO
+
+model = YOLO("runs/detect/badge-demo/weights/best.pt")
+result = model.predict("upload/val_images/multiplebadges.jpg", conf=0.25)[0]
+result.save("prediction.jpg")
+display(Image("prediction.jpg"))
+----
+. Look at the image. The model draws `Badge` boxes on an image it never saw during training.
+. Optional: in the file browser, open `runs/detect/badge-demo/results.png` to see the training curves. The loss lines going down mean the model was learning.
+
+With only 20 epochs, the model may miss a badge or draw a low-confidence box. More epochs and more labeled images improve it.
+
+=== Verify
+
+The test image shows at least one box labeled `Badge`.
+
+== From Notebook to the App
+
+The trained `best.pt` file is the model. To run it in the PPE Compliance Monitor, it is converted to OpenVINO format and added to the model server. It then becomes a new scenario through *+ Add New Video Source*, the same way the bird model you saw in the last module was added. That step is part of deploying the QuickStart rather than demoing it.
+
+== Learning Outcomes Checkpoint
+
+* [ ] Create a Label Studio project, draw boxes and export in YOLO format
+* [ ] Run the training notebook and find `best.pt`
+* [ ] Show the trained model detecting badges on a new image
+* [ ] Explain to a customer what it takes to train a model for their own objects
+
+== Key Takeaways
+
+* A custom detector needs labeled examples, not a large research effort.
+* Label Studio and JupyterLab ship with the QuickStart, so the full loop runs on Red Hat OpenShift AI.
+* The same app from the last module can run the new model as one more scenario.
+
+== Conclusion
+
+You took a new object from labeled pictures to a working model in about 25 minutes. That closes the PPE story: show the app detecting safety gear, then show the customer how it learns to detect their own objects.

@@ -1,0 +1,133 @@
+= AI Quickstart PPE Compliance Monitor — Walking Through the App
+:imagesdir: ../images
+
+This is the most visual demo in the lab. A camera feed plays, a vision model draws boxes around people, hard hats and safety vests in real time, and a chat assistant answers questions about what it sees.
+
+The app is already deployed and running. You open one page and you're in.
+
+Allow approximately 20 minutes.
+
+== What You'll Take Away
+
+* Orient a customer to the three parts of the dashboard: sources, live feed and chat
+* Run the live PPE detection on the rooftop safety video
+* Ask the Chat Assistant about the current scene and about detection history
+* Switch scenarios to show one app running different vision models
+
+== The Story
+
+Most worksite safety checks are manual and after the fact: someone reviews footage once an incident has already happened. This QuickStart watches the feed continuously, flags missing personal protective equipment (PPE) as it happens and lets anyone ask questions in plain English instead of scrubbing through video.
+
+== Exercise 1: Open the Dashboard
+
+. Open the link:https://ppe-{guid}-user-{guid}-ppe.{openshift_cluster_ingress_domain}/[PPE Compliance Monitor,window=blank].
+. Walk the customer through the three columns of the *Multi Modal and Multi Model Monitoring System* page:
++
+* *Source* (left) — the scenarios you can run. Each *MP4 Videos* thumbnail is a recorded clip; the *RTSP URL* dropdown is for live camera streams.
+* *Live feed* (center) — the video with detection boxes. Below it, *Latest Detection* shows what the model sees right now, and *Safety Trends* shows a running summary.
+* *Chat Assistant* (right) — where you ask questions.
+
+=== Verify
+
+You see the three columns. If no source is selected yet, the center says *Select a source to start*.
+
+== Exercise 2: Watch It Detect
+
+. Under *MP4 Videos*, click the thumbnail of the rooftop construction clip. The selected thumbnail is highlighted.
+. The center shows *Loading model...* for a few seconds, then the video plays with a red *LIVE FEED* label.
+. Point out the boxes on the video. Each box carries a class label and a confidence score:
++
+* *Green* boxes are gear that is present, such as `Hardhat` or `Safety Vest`.
+* *Red* boxes are gear that is missing, such as `NO-Hardhat` or `NO-Safety Vest`.
+* People carry a tracking number, such as `Person #4`, so the app follows the same person from frame to frame.
+. Read the *Latest Detection* line with the customer. It updates every few seconds and matches what is on screen.
+. Point to *Safety Trends*. It rolls the detections up into a short summary, such as how many people are missing PPE.
+
+Say it out loud: "The model isn't just finding people. It is checking each person for a hard hat and a vest, and it calls out the ones without them."
+
+=== Verify
+
+The rooftop video plays with labeled boxes, and *Latest Detection* lists what the model currently sees.
+
+== Exercise 3: Ask the Chat Assistant
+
+Every detection is stored in a database as the video plays. The Chat Assistant can answer from the current frame or from that history. You never write a query.
+
+. In the *Chat Assistant* panel, type this and click *Send*:
++
+[source,text]
+----
+What do you see in the video right now?
+----
++
+The answer describes the current scene and should match the *Latest Detection* line.
+
+. Wait about 30 seconds so more history builds up, then ask:
++
+[source,text]
+----
+How many people were not wearing a hard hat in the last few minutes?
+----
++
+This time the assistant turns your question into a database query and returns a plain-English answer.
+
+. Ask a follow-up in the same conversation:
++
+[source,text]
+----
+Which safety violation is most common so far?
+----
+
+The selling beat: a safety manager gets answers in seconds, without a dashboard builder or a data analyst.
+
+=== Verify
+
+You got one answer about the current scene and one answer about history, both in plain English.
+
+== Exercise 4: Switch Scenarios
+
+The same app can run a different vision model on a different feed. Each thumbnail is a full scenario: a video plus the model and classes that go with it.
+
+. Under *MP4 Videos*, click the *cars* thumbnail. The feed switches to traffic and the boxes now show `car`, `truck` and `bus`.
+. Click the *bird* thumbnail. The boxes now show `Bluejays` and `Cardinals`. This model was trained on just two custom classes, which is what you'll do in the next module.
+. Notice that the *Chat Assistant* history clears each time you switch, so answers always match the selected scenario.
+. Click the rooftop thumbnail again to return to the PPE scenario.
+
+Tell the customer: "Swap the camera and swap the model. The pattern stays the same whether you're checking hard hats, counting vehicles or inspecting a production line."
+
+=== Verify
+
+Each thumbnail shows a different video with different box labels, and the chat starts fresh after every switch.
+
+== Exercise 5 (Optional): Create an Alert in Plain English
+
+. Click *+ Add New Video Source* at the bottom of the *Source* column. The *Video sources* page opens.
+. Find the card whose model is `ppe` and whose video is `combined-video-no-gap-rooftop.mp4`, then click *View*.
+. In the *Alerts* panel, type this rule, set severity to *High* and click *Create Alert*:
++
+[source,text]
+----
+Alert me when a person is not wearing a hardhat
+----
+. Click *← Monitoring*, select the rooftop thumbnail and watch *Safety Trends*. The rule appears with a count, for example `⚠ 3 violations — a person is not wearing a hardhat`.
+
+=== Verify
+
+Your rule shows up in *Safety Trends* with a violation count.
+
+== Learning Outcomes Checkpoint
+
+* [ ] Name the three parts of the dashboard and what each one does
+* [ ] Run PPE detection and point out `NO-Hardhat` or `NO-Safety Vest` boxes
+* [ ] Ask one question about the current scene and one about history
+* [ ] Switch to another scenario and explain why the chat resets
+
+== Key Takeaways
+
+* Live boxes on a safety video are the fastest visual hook in the lab.
+* The app both *sees* and *answers questions about* what it sees.
+* One app, many scenarios: change the video and the model, keep the same experience.
+
+== Conclusion
+
+You ran the whole PPE story from one browser page: watch it detect, ask it questions, switch scenarios. In the next module you'll train a new vision model of your own, the same way the bird model was built.
