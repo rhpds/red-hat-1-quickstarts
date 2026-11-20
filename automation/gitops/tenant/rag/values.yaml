@@ -168,16 +168,16 @@ pgvector:
 llama-stack:
   enabled: true
   # Llama Stack parses and embeds every ingested PDF in-process, and the five
-  # ingestion pipelines run at the same time. On the namespace default
-  # (2 CPU / 4Gi) the pod was restarted mid-ingestion, so every pipeline
-  # failed with "Connection reset by peer".
+  # ingestion pipelines run at the same time. Keep the namespace-default
+  # ceiling (2 CPU / 4Gi) but reserve the memory ingestion needs, so a busy
+  # node doesn't evict the pod mid-ingestion.
   resources:
     requests:
-      cpu: "1"
+      cpu: 500m
       memory: 2Gi
     limits:
-      cpu: "4"
-      memory: 8Gi
+      cpu: "2"
+      memory: 4Gi
   # Give a busy pod time to answer before it is restarted or taken out of
   # the Service.
   livenessProbe:
