@@ -25,7 +25,7 @@ This lab is written for Red Hat Solution Architects who already know their way a
 
 == The Lab at a Glance
 
-This tour is six short modules, about two hours end to end.
+This tour is seven modules, about 2 hours 45 minutes end to end.
 
 [cols="1,4,1",options="header"]
 |===
@@ -54,9 +54,11 @@ This tour is six short modules, about two hours end to end.
 | xref:module-06-ppe-compliance-monitor-train-a-model.adoc[Module 6]
 | *AI Quickstart PPE Compliance Monitor — Training a New Model* — label images in Label Studio and train a custom YOLO model in JupyterLab.
 | ~25 min
-|===
 
-After the QuickStart tour, xref:module-07-saw-personal-assistant.adoc[Module 7: Secure Agent Workspace] adds approximately 45 minutes to demonstrate a personal assistant using Mailpit email, Mattermost chat and Radicale calendar. It includes a controlled prompt-injection exercise and observed governance evidence. The lab provides a prepared workspace, source accounts and demo data for this module.
+| xref:module-07-saw-personal-assistant.adoc[Module 7]
+| *Secure Agent Workspace — A Governed Personal Assistant* — a personal assistant over Mailpit email, Mattermost chat and Radicale calendar, with a controlled prompt-injection exercise and observed governance evidence. The lab provides a prepared workspace, source accounts and demo data.
+| ~45 min
+|===
 
 The AI Quickstart RAG is the flagship for this lab, but it's one of a growing catalog. More QuickStarts covering other AI and platform use cases are coming in future revisions of this course.
 
