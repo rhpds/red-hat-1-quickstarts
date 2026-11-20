@@ -162,6 +162,7 @@ class RefreshTests(unittest.TestCase):
         llamastack = yaml.safe_load(values.read_text())["llama-stack"]
         self.assertEqual(llamastack["resources"]["limits"], {"cpu": "2", "memory": "4Gi"})
         self.assertEqual(llamastack["livenessProbe"]["timeoutSeconds"], 30)
+        self.assertEqual(llamastack["models"]["remotellm"]["maxTokens"], "0")
         self.assertEqual(llamastack["secrets"], {})
         before = values.read_text()
         update_rag.set_llamastack_resources(chart)
