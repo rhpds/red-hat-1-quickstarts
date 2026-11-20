@@ -25,7 +25,7 @@ This lab is written for Red Hat Solution Architects who already know their way a
 
 == The Lab at a Glance
 
-This tour is four short modules, about 95 minutes end to end.
+This tour is six short modules, about two hours end to end.
 
 [cols="1,4,1",options="header"]
 |===
@@ -46,6 +46,14 @@ This tour is four short modules, about 95 minutes end to end.
 | xref:module-04-it-self-service-quickstart-selling-the-demo.adoc[Module 4]
 | *AI Quickstart IT Self Service — Selling the Demo* — an AI agent that resolves a laptop-refresh request end to end over email, applying policy automatically.
 | ~20 min
+
+| xref:module-05-ppe-compliance-monitor-walkthrough.adoc[Module 5]
+| *AI Quickstart PPE Compliance Monitor — Walking Through the App* — live object detection on a safety video, plus a chat assistant that answers questions about what the camera sees.
+| ~20 min
+
+| xref:module-06-ppe-compliance-monitor-train-a-model.adoc[Module 6]
+| *AI Quickstart PPE Compliance Monitor — Training a New Model* — label images in Label Studio and train a custom YOLO model in JupyterLab.
+| ~25 min
 |===
 
 After the QuickStart tour, xref:module-07-saw-personal-assistant.adoc[Module 7: Secure Agent Workspace] adds approximately 45 minutes to demonstrate a personal assistant using Mailpit email, Mattermost chat and Radicale calendar. It includes a controlled prompt-injection exercise and observed governance evidence. The lab provides a prepared workspace, source accounts and demo data for this module.
