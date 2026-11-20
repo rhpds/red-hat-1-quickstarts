@@ -87,7 +87,9 @@ Deliver the close: "Same assistant, but now it answers from *your* knowledge —
 [NOTE]
 ====
 Retrieved chunks share the token budget with the answer. If a grounded answer gets cut short, raise *Max Tokens* in the sidebar and ask again.
+
 image::max-token-settings.png[Adjusting Max Tokens in the sidebar, role=expand]
+
 ====
 
 === Verify
