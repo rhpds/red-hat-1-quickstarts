@@ -1,0 +1,70 @@
+---
+# VALIDATE — module 3: AI Quickstart RAG — Selling the Agentic Story
+#
+# This module is a conversational walkthrough on the same stack module 2
+# exercises, so the gate is deliberately narrow: the RAG stack must be up and
+# grounded. Module 3 adds no infrastructure of its own.
+#
+# TODO: extend this gate once the agentic flow has a stable, observable
+# outcome (e.g. a tool-augmented answer that names the tool it called). Until
+# then, asserting more than "the demo stack is healthy" would be guessing.
+
+- name: Validate module 3
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    user_data: >-
+      {{
+        (lookup('file', '/user_data/user_data.yml', errors='ignore') | default('', true) | from_yaml)
+        or {}
+      }}
+    domain: "{{ user_data.openshift_cluster_ingress_domain | default(lookup('env', 'DOMAIN'), true) }}"
+    tenant_user: "{{ student_user | default(user_data.user | default('user-' ~ tenant_guid)) }}"
+    rag_ns: "{{ tenant_user }}-rag"
+    rag_url: "https://tenant-{{ tenant_guid }}-rag-{{ rag_ns }}.{{ domain }}"
+  tasks:
+    - name: The RAG UI answers
+      ansible.builtin.uri:
+        url: "{{ rag_url }}"
+        method: GET
+        status_code: [200, 302, 303, 307]
+        follow_redirects: none
+        validate_certs: false
+        timeout: 15
+      register: r_route
+      changed_when: false
+      failed_when: false
+
+    - name: The RAG Argo CD application is Healthy
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "tenant-{{ tenant_guid }}"
+      register: r_app
+      changed_when: false
+      failed_when: false
+
+    - name: Report the module 3 result
+      validation_check:
+        check: >-
+          {{ (r_route.status | default(0) in [200, 302, 303, 307]) and
+             (r_app.resources | default([]) | length > 0) and
+             ((r_app.resources[0].status.health.status | default('')) == 'Healthy') }}
+        pass_msg: |
+          Module 3 checks passed:
+          - RAG UI answers at {{ rag_url }}
+          - tenant-{{ tenant_guid }} is Healthy in Argo CD
+
+          Continue the agentic walkthrough in the RAG UI.
+        error_msg: |
+          {{ '✅' if r_route.status | default(0) in [200, 302, 303, 307] else '❌' }} RAG UI answers (HTTP {{ r_route.status | default('unreachable') }})
+          {{ '✅' if (r_app.resources | default([]) | length > 0) and (r_app.resources[0].status.health.status | default('')) == 'Healthy' else '❌' }} tenant-{{ tenant_guid }} Health = {{ r_app.resources[0].status.health.status | default('not found') }}
+
+          Module 3 uses the same stack as module 2. If this fails, validate
+          module 2 first; its message names the failing component.

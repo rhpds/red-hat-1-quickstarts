@@ -1,0 +1,82 @@
+---
+# VALIDATE — module 4: AI Quickstart IT Self Service — Selling the Demo
+#
+# Checks the outcome the learner is asked to reach: the IT Self Service flow is
+# up and the demo mailbox is serving mail back.
+#
+# TODO: the module's own endpoint for "the request was processed" is not
+# established yet. Once it is, assert the processed ticket rather than the raw
+# mailbox; today the mailbox is the strongest stable signal.
+
+- name: Validate module 4
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    user_data: >-
+      {{
+        (lookup('file', '/user_data/user_data.yml', errors='ignore') | default('', true) | from_yaml)
+        or {}
+      }}
+    domain: "{{ user_data.openshift_cluster_ingress_domain | default(lookup('env', 'DOMAIN'), true) }}"
+    tenant_user: "{{ student_user | default(user_data.user | default('user-' ~ tenant_guid)) }}"
+    itssvc_ns: "{{ tenant_user }}-it-selfsvc"
+    webmail_url: "https://test-email-server-ui-{{ itssvc_ns }}.{{ domain }}"
+    itss_app: "it-selfsvc-{{ tenant_guid }}"
+  tasks:
+    - name: The IT Self Service Argo CD application is Synced and Healthy
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ itss_app }}"
+      register: r_app
+      changed_when: false
+      failed_when: false
+
+    - name: The Webmail test server is healthy
+      ansible.builtin.uri:
+        url: "{{ webmail_url }}/health"
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: r_health
+      changed_when: false
+      failed_when: false
+
+    - name: The demo inbox is readable
+      ansible.builtin.uri:
+        url: "{{ webmail_url }}/api/messages/john.doe@company.com"
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: r_inbox
+      changed_when: false
+      failed_when: false
+
+    - name: Report the module 4 result
+      validation_check:
+        check: >-
+          {{ (r_app.resources | default([]) | length > 0) and
+             (r_app.resources[0].status.sync.status | default('')) == 'Synced' and
+             (r_app.resources[0].status.health.status | default('')) == 'Healthy' and
+             (r_health.status | default(0) == 200) and
+             (r_inbox.status | default(0) == 200) }}
+        pass_msg: |
+          Module 4 checks passed:
+          - {{ itss_app }} is Synced and Healthy
+          - Webmail answers /health
+          - john.doe@company.com has a readable inbox
+        error_msg: |
+          {{ '✅' if (r_app.resources | default([]) | length > 0) and (r_app.resources[0].status.health.status | default('')) == 'Healthy' else '❌' }} {{ itss_app }} Synced/Healthy ({{ r_app.resources[0].status.sync.status | default('not found') }}/{{ r_app.resources[0].status.health.status | default('not found') }})
+          {{ '✅' if r_health.status | default(0) == 200 else '❌' }} Webmail /health (HTTP {{ r_health.status | default('unreachable') }})
+          {{ '✅' if r_inbox.status | default(0) == 200 else '❌' }} Demo inbox readable (HTTP {{ r_inbox.status | default('unreachable') }})
+
+          If the inbox check fails, the IT Self Service seed did not run. Check
+          the {{ itssvc_ns }} pods and the Argo CD sync history.

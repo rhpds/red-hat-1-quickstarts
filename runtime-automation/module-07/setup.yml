@@ -1,0 +1,57 @@
+---
+# SETUP — module 7: Secure Agent Workspace — A Governed Personal Assistant
+#
+# Read-only. SAW is the slowest component per seat (KubeVirt VM plus its own
+# Keycloak), so this waits for the application and VM before the learner opens
+# the module rather than letting them hit a half-started environment.
+
+- name: Wait for the module 7 SAW stack
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    saw_app: "saw-users-{{ tenant_guid }}"
+    saw_ns: "saw-user-{{ tenant_guid }}"
+  tasks:
+    - name: The SAW Argo CD application is Synced and Healthy
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ saw_app }}"
+      register: r_app
+      changed_when: false
+      retries: 120
+      delay: 10
+      until: >-
+        r_app.resources | default([]) | length > 0 and
+        r_app.resources[0].status.health.status == 'Healthy'
+      failed_when: >-
+        r_app.resources | default([]) | length == 0 or
+        r_app.resources[0].status.health.status != 'Healthy'
+
+    # TODO(verify on a live seat): confirm the VM/VMI names the SAW chart
+    # creates. The gate only needs "the workspace VM is running", which is
+    # independent of the assistant being reachable.
+    - name: The workspace VM is running
+      kubernetes.core.k8s_info:
+        api_version: kubevirt.io/v1
+        kind: VirtualMachineInstance
+        namespace: "{{ saw_ns }}"
+      register: r_vmi
+      changed_when: false
+      retries: 60
+      delay: 10
+      until: >-
+        r_vmi.resources | default([]) | length > 0 and
+        r_vmi.resources | selectattr('status.phase', 'defined') | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+      failed_when: >-
+        r_vmi.resources | default([]) | length == 0
+
+    - name: Ready for module 7
+      ansible.builtin.debug:
+        msg: "SAW is Healthy and the workspace VM is running"

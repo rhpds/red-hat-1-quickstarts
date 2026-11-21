@@ -1,0 +1,64 @@
+---
+# VALIDATE — module 7: Secure Agent Workspace — A Governed Personal Assistant
+#
+# Checks the outcome the learner is asked to reach: the assistant answers and
+# the governance story (policy in front of the model) holds.
+#
+# TODO: the assistant's own API is not addressed here yet — the current gate
+# proves the workspace is running, not that it answers. Add the conversational
+# assertion once the endpoint and its auth are settled; see
+# docs/e2e/runtime-automation.md.
+
+- name: Validate module 7
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    saw_app: "saw-users-{{ tenant_guid }}"
+    saw_ns: "saw-user-{{ tenant_guid }}"
+  tasks:
+    - name: The SAW Argo CD application is Synced and Healthy
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ saw_app }}"
+      register: r_app
+      changed_when: false
+      failed_when: false
+
+    - name: The workspace VM is running
+      kubernetes.core.k8s_info:
+        api_version: kubevirt.io/v1
+        kind: VirtualMachineInstance
+        namespace: "{{ saw_ns }}"
+      register: r_vmi
+      changed_when: false
+      failed_when: false
+
+    - name: Report the module 7 result
+      validation_check:
+        check: >-
+          {{ (r_app.resources | default([]) | length > 0) and
+             (r_app.resources[0].status.sync.status | default('')) == 'Synced' and
+             (r_app.resources[0].status.health.status | default('')) == 'Healthy' and
+             (r_vmi.resources | default([]) | selectattr('status.phase', 'defined') | selectattr('status.phase', 'equalto', 'Running') | list | length > 0) }}
+        pass_msg: |
+          Module 7 checks passed:
+          - {{ saw_app }} is Synced and Healthy
+          - The workspace VM is Running
+
+          Ask the assistant a question and confirm the governance intercept
+          is visible in the flow.
+        error_msg: |
+          {{ '✅' if (r_app.resources | default([]) | length > 0) and (r_app.resources[0].status.health.status | default('')) == 'Healthy' else '❌' }} {{ saw_app }} Synced/Healthy ({{ r_app.resources[0].status.sync.status | default('not found') }}/{{ r_app.resources[0].status.health.status | default('not found') }})
+          {{ '✅' if r_vmi.resources | default([]) | selectattr('status.phase', 'defined') | selectattr('status.phase', 'equalto', 'Running') | list | length > 0 else '❌' }} Workspace VM Running ({{ r_vmi.resources | default([]) | map(attribute='status.phase', default='pending') | join(', ') | default('no VMI', true) }})
+
+          SAW is the slowest part of a seat. If the VM is not running, check
+          the {{ saw_ns }} events for insufficient CPU or memory — that is the
+          usual cause, and it is a cluster sizing problem rather than a lab
+          problem.

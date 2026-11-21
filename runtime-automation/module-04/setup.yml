@@ -1,0 +1,63 @@
+---
+# SETUP — module 4: AI Quickstart IT Self Service — Selling the Demo
+#
+# Read-only. Waits for the Webmail test server and the seeded inboxes the
+# module depends on. The learner sends mail from the self-service portal to
+# these mailboxes, so an empty seed fails the demo with no obvious cause.
+
+- name: Wait for the module 4 IT Self Service stack
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    user_data: >-
+      {{
+        (lookup('file', '/user_data/user_data.yml', errors='ignore') | default('', true) | from_yaml)
+        or {}
+      }}
+    domain: "{{ user_data.openshift_cluster_ingress_domain | default(lookup('env', 'DOMAIN'), true) }}"
+    tenant_user: "{{ student_user | default(user_data.user | default('user-' ~ tenant_guid)) }}"
+    itssvc_ns: "{{ tenant_user }}-it-selfsvc"
+    webmail_url: "https://test-email-server-ui-{{ itssvc_ns }}.{{ domain }}"
+  tasks:
+    - name: The Webmail test server is healthy
+      ansible.builtin.uri:
+        url: "{{ webmail_url }}/health"
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: r_health
+      changed_when: false
+      retries: 36
+      delay: 10
+      until: r_health.status | default(0) == 200
+      failed_when: r_health.status | default(0) != 200
+
+    - name: The module 4 inboxes are seeded
+      ansible.builtin.uri:
+        url: "{{ webmail_url }}/api/messages/{{ item }}"
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: r_inbox
+      changed_when: false
+      retries: 12
+      delay: 10
+      until: r_inbox.status | default(0) == 200
+      failed_when: r_inbox.status | default(0) != 200
+      loop:
+        - alice.johnson@company.com
+        - john.doe@company.com
+        - maria.garcia@company.com
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Ready for module 4
+      ansible.builtin.debug:
+        msg: "Webmail is serving at {{ webmail_url }} and the demo inboxes are seeded"

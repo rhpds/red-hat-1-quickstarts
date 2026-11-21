@@ -14,7 +14,7 @@ Allow approximately 45 minutes after workspace setup. By the end, you should be 
 
 == 1. Open Your Workspace and Sources
 
-. Open *OpenClaw* and *SAW Dashboard*. Sign in with your assigned lab credentials and confirm that the email, chat and calendar providers are ready.
+. Open *OpenClaw*. Sign in with your assigned lab credentials and confirm that the email, chat and calendar providers are ready.
 
 Use the same assigned lab credentials to sign in to each service:
 
@@ -43,7 +43,7 @@ Your inbox, channel and calendar contain prepared synthetic data, including a re
 
 === Keep Enforcement Evidence Visible
 
-Keep OpenClaw beside SAW Dashboard so you can compare executed operations with their audit events. If you have CLI access configured for your assigned user's trusted OpenShell gateway, you can also inspect sandbox logs:
+Keep OpenClaw open so you can compare executed operations with the results they return. If you have CLI access configured for your assigned user's trusted OpenShell gateway, you can also inspect sandbox logs:
 
 [source,bash]
 ----
@@ -162,7 +162,7 @@ you find there.
 
 Compare the outcomes of the two prompts. An instruction found in a source still cannot grant a capability outside the workspace's approved policy.
 
-Expand the actual operations and inspect their results. Look for a matching audit event in SAW Dashboard if available. Record what happened:
+Expand the actual operations and inspect their results. Record what happened:
 
 * *The assistant ignored or flagged the instruction:* this is model behavior, not evidence of a runtime policy denial.
 * *The assistant attempted the upload and the tool gate denied it:* correlate the `exec` operation with its denied result and audit event, including the user, session, timestamp and policy rule. The command was blocked before the HTTP request ran.

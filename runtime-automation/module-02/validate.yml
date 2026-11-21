@@ -1,0 +1,88 @@
+---
+# VALIDATE — module 2: AI Quickstart RAG — Running the Demo
+#
+# Checks the outcome the learner is asked to reach: the RAG UI answers and the
+# five knowledge bases the demo cites are loaded. Read-only and non-mutating;
+# nothing here changes the environment, so it is safe to re-run.
+#
+# Leave starts/ends for the module itself. This is the pass/fail gate shown by
+# the Showroom "Validate" button (GET /stream/validate/module-02).
+
+- name: Validate module 2
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    user_data: >-
+      {{
+        (lookup('file', '/user_data/user_data.yml', errors='ignore') | default('', true) | from_yaml)
+        or {}
+      }}
+    domain: "{{ user_data.openshift_cluster_ingress_domain | default(lookup('env', 'DOMAIN'), true) }}"
+    tenant_user: "{{ student_user | default(user_data.user | default('user-' ~ tenant_guid)) }}"
+    rag_ns: "{{ tenant_user }}-rag"
+    rag_url: "https://tenant-{{ tenant_guid }}-rag-{{ rag_ns }}.{{ domain }}"
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
+    vector_stores:
+      - hr-vector-db-v1-0
+      - legal-vector-db-v1-0
+      - sales-vector-db-v1-0
+      - procurement-vector-db-v1-0
+      - techsupport-vector-db-v1-0
+  tasks:
+    - name: The RAG UI answers
+      ansible.builtin.uri:
+        url: "{{ rag_url }}"
+        method: GET
+        status_code: [200, 302, 303, 307]
+        follow_redirects: none
+        validate_certs: false
+        timeout: 15
+      register: r_route
+      changed_when: false
+      failed_when: false
+
+    # TODO(verify on a live seat): the llama-stack Service name and port come
+    # from the tenant chart; the readiness healthcheck asserts the same
+    # endpoint. Confirm both resolve to the same Service before relying on it.
+    - name: Read the loaded knowledge bases
+      ansible.builtin.uri:
+        url: "{{ llama_stack_url }}/v1/vector_stores"
+        method: GET
+        status_code: [200]
+        return_content: true
+        timeout: 20
+      register: r_stores
+      changed_when: false
+      failed_when: false
+
+    - name: Report the module 2 result
+      vars:
+        _stores_body: "{{ r_stores.content | default('') }}"
+        _missing: "{{ vector_stores | reject('in', _stores_body) | list }}"
+      validation_check:
+        check: >-
+          {{ (r_route.status | default(0) in [200, 302, 303, 307]) and
+             (_missing | length == 0) }}
+        pass_msg: |
+          Module 2 checks passed:
+          - RAG UI answers at {{ rag_url }}
+          - All {{ vector_stores | length }} knowledge bases are loaded
+
+          Ask the demo question and confirm the answer cites the knowledge bases.
+        error_msg: |
+          {{ '✅' if r_route.status | default(0) in [200, 302, 303, 307] else '❌' }} RAG UI answers (HTTP {{ r_route.status | default('unreachable') }})
+          {{ '✅' if _missing | length == 0 else '❌' }} Knowledge bases loaded (HTTP {{ r_stores.status | default('unreachable') }})
+
+          {% if _missing | length > 0 %}
+          Missing: {{ _missing | join(', ') }}
+          The ingestion pipelines have not run, or ran before the model key was wired.
+          {% endif %}
+          {% if r_route.status | default(0) not in [200, 302, 303, 307] %}
+          The RAG UI is not serving. Check the tenant-{{ tenant_guid }} Argo CD
+          application in openshift-gitops and the pods in {{ rag_ns }}.
+          {% endif %}
