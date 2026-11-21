@@ -114,7 +114,7 @@ def store_documents(llamastack_base_url: str, input_dir: Input[Dataset], auth_us
     import time
     from pathlib import Path
 
-    from llama_stack_client import LlamaStackClient
+    from llama_stack_client import APIStatusError, LlamaStackClient
 
     vector_store_name = os.getenv("VECTOR_STORE_NAME")
 
@@ -170,11 +170,22 @@ def store_documents(llamastack_base_url: str, input_dir: Input[Dataset], auth_us
         print(f"Uploading {len(input_files)} files")
         uploaded_files = []
         for i, file_path in enumerate(input_files):
-            with open(file_path, 'rb') as file_content:
-                file_response = client.files.create(
-                    file=file_content,
-                    purpose="assistants"
-                )
+            # On a fresh Llama Stack the first upload can arrive before its
+            # files table exists and come back as a 500 ("no such table:
+            # openai_files"). A failed upload stores nothing, so try again.
+            for attempt in range(1, 6):
+                try:
+                    with open(file_path, 'rb') as file_content:
+                        file_response = client.files.create(
+                            file=file_content,
+                            purpose="assistants"
+                        )
+                    break
+                except APIStatusError as e:
+                    if e.status_code < 500 or attempt == 5:
+                        raise
+                    print(f"Upload of {os.path.basename(file_path)} failed ({e.status_code}), retrying in {attempt * 5}s")
+                    time.sleep(attempt * 5)
 
             client.vector_stores.files.create(
                 vector_store_id=vector_store_id,

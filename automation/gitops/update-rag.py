@@ -162,13 +162,31 @@ INGESTION_TASKS_VALUES = {
 }
 
 
+# The add-<pipeline> job ran curl without `set -e`, so a failed /add still
+# printed "created successfully" and the job succeeded with no pipeline.
+PIPELINE_JOB_SCRIPT = (
+    b"""              echo "Creating pipeline: $PIPELINE_KEY ($PIPELINE_SOURCE)"
+              echo "Pipeline data: {{ $pipelineData }}"
+              
+              curl -sfX 'POST' \\
+""",
+    b"""              set -euo pipefail
+              echo "Creating pipeline: $PIPELINE_KEY ($PIPELINE_SOURCE)"
+              echo "Pipeline data: {{ $pipelineData }}"
+              
+              curl -sSf --retry 5 --retry-connrefused --retry-delay 10 -X 'POST' \\
+""",
+)
+
+
 def patch_ingestion_pipeline_tasks(chart):
     """Mount a patched tasks.py over the ingestion-pipeline image's copy.
 
     The pipeline steps run code the service compiles from tasks.py, so a
     patched file in the service pod fixes the steps without a new image. The
     patch gives the Llama Stack client a long timeout and no retries for the
-    synchronous file attach.
+    synchronous file attach, and retries an upload that fails with a 5xx.
+    It also makes the add-<pipeline> job fail when its /add call fails.
     """
     lock = yaml.safe_load((chart / "Chart.lock").read_text())
     dep = next((d for d in lock["dependencies"] if d["name"] == "ingestion-pipeline"), None)
@@ -185,10 +203,18 @@ def patch_ingestion_pipeline_tasks(chart):
         entries = [(item, source.extractfile(item).read() if item.isfile() else None)
                    for item in source.getmembers() if item.name not in extra]
     buffer = io.BytesIO()
-    found = False
+    found = patched_job = False
     with gzip.GzipFile(fileobj=buffer, mode="wb", filename="", mtime=0) as gz:
         with tarfile.open(fileobj=gz, mode="w") as out:
             for item, data in entries:
+                if item.name == "ingestion-pipeline/templates/pipeline-job.yaml":
+                    old_script, new_script = PIPELINE_JOB_SCRIPT
+                    if data.count(old_script) == 1:
+                        data = data.replace(old_script, new_script)
+                    elif data.count(new_script) != 1:
+                        raise ValueError("ingestion-pipeline job script changed; review the /add failure patch")
+                    item.size = len(data)
+                    patched_job = True
                 if item.name == "ingestion-pipeline/values.yaml":
                     for old, new in INGESTION_TASKS_VALUES.items():
                         if data.count(old) == 1:
@@ -204,6 +230,8 @@ def patch_ingestion_pipeline_tasks(chart):
                 out.addfile(info, io.BytesIO(data))
     if not found:
         raise ValueError("ingestion-pipeline values.yaml not found")
+    if not patched_job:
+        raise ValueError("ingestion-pipeline pipeline-job.yaml not found")
     archive.write_bytes(buffer.getvalue())
 
 
