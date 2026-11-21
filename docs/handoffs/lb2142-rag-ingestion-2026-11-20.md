@@ -54,6 +54,11 @@ pod/llamastack-…  terminated exitCode=137  reason=Error
 
 Every in-flight insert then fails with the timeout above.
 
+Restarts are not the only trigger: the 2026-11-21 run at the bottom of this
+document had zero restarts and still failed, with llama-stack returning a 500
+mid-insert. Treat the restart as one way to provoke a transient insert failure,
+not the root cause.
+
 ### Evidence (two clusters, same behaviour)
 
 4.20 cluster (`cluster-69fb6`), workshop `dev-cp4lx`:
@@ -76,6 +81,40 @@ Every in-flight insert then fails with the timeout above.
 The contrast between `rtl2n` (clean, single late seat) and the seats provisioned
 together is the strongest signal: it is a concurrency/latency problem, not bad
 data.
+
+### Latest reproduction (2026-11-21, container-mode cluster `8wm7t`)
+
+Same content, current charts, 3 seats ordered together. **No llama-stack
+restarts at all** this time — but ingestion still fails on 2 of 3 seats:
+
+| seat | stores | documents per store | llama-stack restarts |
+| --- | --- | --- | --- |
+| `xbqkr` | 5 | 1, 1, 1, 1, 9 | 0 — clean |
+| `5cnkd` | 5 | 1, 1, 1, **0** (`techsupport`) | 0 — insert failed |
+| `sq48x` | 4 (`legal` never created) | 1, 1, 1, 9 | 0 |
+
+The failure has moved from a client timeout to a server error, and it no longer
+depends on the liveness probe:
+
+```
+raise Exception(f"Failed to insert documents into vector store: {e}")
+Exception: Failed to insert documents into vector store:
+  Error code: 500 - {'error': {'message': 'Internal server error: An unexpected error occurred.'}}
+E1121 launcher_v2.go:417] Component failed to execute successfully: exit status 1
+```
+
+Two things this shows:
+
+1. **The 500 makes the no-retry problem worse, not better.** llama-stack is
+   answering but returning a transient 500 mid-batch; the executor treats it as
+   terminal. A bounded retry would still fix this without any probe change.
+2. **Store creation is still not get-or-create.** On `sq48x`, `legal` is absent
+   while the other four completed — the same non-idempotent/partial-creation
+   behaviour, just without a restart to blame.
+
+For reference, the expected document counts on `main` are one file each for
+`hr`, `legal`, `sales`, `procurement` and nine for `techsupport`; a clean seat
+shows exactly `1, 1, 1, 1, 9`.
 
 ## What is needed
 
