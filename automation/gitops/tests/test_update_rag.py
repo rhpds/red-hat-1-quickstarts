@@ -172,5 +172,41 @@ class RefreshTests(unittest.TestCase):
             update_rag.set_llamastack_resources(chart)
 
 
+    def ingestion_chart(self, job_script):
+        chart = Path(self.temp.name) / "chart"
+        (chart / "charts").mkdir(parents=True)
+        (chart / "Chart.lock").write_text("dependencies:\n- name: ingestion-pipeline\n  version: 0.7.5\n")
+        archive = chart / "charts/ingestion-pipeline-0.7.5.tgz"
+        files = {
+            "ingestion-pipeline/values.yaml": b"volumes: {}\nvolumeMounts: {}\n",
+            "ingestion-pipeline/templates/pipeline-job.yaml": b"            - |\n" + job_script + b"              'http://svc/add'\n",
+        }
+        with tarfile.open(archive, "w:gz") as tf:
+            for name, data in files.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tf.addfile(info, io.BytesIO(data))
+        return chart, archive
+
+    def test_ingestion_pipeline_patch_fails_add_job_and_retries_uploads(self):
+        chart, archive = self.ingestion_chart(update_rag.PIPELINE_JOB_SCRIPT[0])
+        update_rag.patch_ingestion_pipeline_tasks(chart)
+        with tarfile.open(archive, "r:gz") as tf:
+            job = tf.extractfile("ingestion-pipeline/templates/pipeline-job.yaml").read()
+            tasks = tf.extractfile("ingestion-pipeline/files/tasks.py").read()
+        self.assertIn(b"set -euo pipefail", job)
+        self.assertIn(b"curl -sSf --retry 5", job)
+        self.assertNotIn(b"curl -sfX", job)
+        self.assertIn(b"except APIStatusError as e:", tasks)
+        self.assertIn(b"e.status_code < 500", tasks)
+        before = archive.read_bytes()
+        update_rag.patch_ingestion_pipeline_tasks(chart)
+        self.assertEqual(before, archive.read_bytes())
+
+    def test_ingestion_pipeline_patch_rejects_changed_add_job(self):
+        chart, _ = self.ingestion_chart(b"              curl -X POST \\\n")
+        with self.assertRaises(ValueError):
+            update_rag.patch_ingestion_pipeline_tasks(chart)
+
 if __name__ == "__main__":
     unittest.main()
