@@ -1,0 +1,315 @@
+---
+# HEALTHCHECK — Is this LB2142 tenant ready for an event?
+#
+# Scope: what this tenant's provisioning and its Argo CD Applications create.
+# Base infrastructure (cluster API, nodes, OpenShift AI operator) is out of
+# scope — AgnosticD and the cluster CI already validate it.
+#
+# Read-only and non-mutating. Target: under 60 seconds.
+# Exit 0 = ready, non-zero = not ready.
+#
+# Stream it from a provisioned Showroom:
+#   curl -sk -N "$SHOWROOM/stream/qa/healthcheck"
+
+- name: LB2142 AI Quickstarts tenant health check
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  # Every kubernetes.core.k8s* call runs as the runtime-automation identity
+  # (cluster-admin, from the runtime-automation-kubeconfig Secret) rather than
+  # the pod's own namespace-scoped `edit` service account, which cannot read
+  # Applications in openshift-gitops or resources in the other tenant
+  # namespaces.
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    repo_path: /showroom/repo
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    user_data: >-
+      {{
+        (lookup('file', '/user_data/user_data.yml', errors='ignore') | default('', true) | from_yaml)
+        or {}
+      }}
+    domain: >-
+      {{ user_data.openshift_cluster_ingress_domain | default(lookup('env', 'DOMAIN'), true) }}
+    tenant_user: "{{ user_data.user | default('user-' ~ tenant_guid) }}"
+    tenant_password: "{{ user_data.password | default('') }}"
+    showroom_ns: "{{ tenant_user }}-showroom"
+    rag_ns: "{{ tenant_user }}-rag"
+    it_selfsvc_ns: "{{ tenant_user }}-it-selfsvc"
+    ppe_ns: "{{ tenant_user }}-ppe"
+    tenant_namespaces:
+      - "{{ rag_ns }}"
+      - "{{ it_selfsvc_ns }}"
+      - "{{ ppe_ns }}"
+      - "{{ showroom_ns }}"
+    # The app-of-apps can never report Synced: its chart adopts the
+    # operator-defaulted ArgoCD/openshift-gitops and
+    # OperatorGroup/external-secrets-operator resources, which drift
+    # permanently. Health plus a completed sync is the real readiness signal,
+    # and it is what saw_prepare gates on.
+    bootstrap_app: "quickstart-tenant-{{ tenant_guid }}"
+    tenant_apps:
+      - "tenant-{{ tenant_guid }}"          # RAG
+      - "it-selfsvc-{{ tenant_guid }}"      # IT Self Service
+      - "ppe-{{ tenant_guid }}"             # PPE Compliance Monitor
+    saw_app: "saw-users-{{ tenant_guid }}"
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
+    vector_stores:
+      - hr-vector-db-v1-0
+      - legal-vector-db-v1-0
+      - sales-vector-db-v1-0
+      - procurement-vector-db-v1-0
+      - techsupport-vector-db-v1-0
+    routes:
+      # Route name is `<argo-application-name>-rag`, i.e. tenant-<guid>-rag.
+      # Verified against a live seat: tenant-<guid>-... does NOT exist.
+      - name: RAG UI
+        url: "https://tenant-{{ tenant_guid }}-rag-{{ rag_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+      - name: Showroom
+        url: "https://showroom-{{ showroom_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+      - name: Webmail
+        url: "https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+      - name: PPE Monitor
+        url: "https://ppe-{{ tenant_guid }}-{{ ppe_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+  tasks:
+    - name: Showroom content repository is checked out
+      ansible.builtin.stat:
+        path: "{{ repo_path }}/content/modules/ROOT/nav.adoc"
+      register: content_stat
+      failed_when: not content_stat.stat.exists
+      changed_when: false
+
+    - name: Cluster API is reachable
+      ansible.builtin.command:
+        cmd: oc whoami
+      register: oc_whoami
+      changed_when: false
+      failed_when: oc_whoami.rc != 0
+
+    - name: Tenant user data is available to the runner
+      ansible.builtin.assert:
+        that:
+          - domain | length > 0
+          - tenant_password | length > 0
+        fail_msg: >-
+          /user_data/user_data.yml is missing openshift_cluster_ingress_domain
+          or password. Check that the tenant's Keycloak workload reported the
+          user, and that AgnosticV does not override _showroom_user_data.
+        quiet: true
+
+    - name: Tenant namespaces exist and are Active
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ item }}"
+      register: ns_info
+      changed_when: false
+      # Namespaces can still be settling immediately after provisioning.
+      retries: 12
+      delay: 5
+      # default([]) so a module error surfaces its own message instead of a
+      # Jinja "'dict object' has no attribute 'resources'" that hides the cause.
+      until: >-
+        ns_info.resources | default([]) | length > 0 and
+        ns_info.resources[0].status.phase == 'Active'
+      failed_when: >-
+        ns_info.resources | default([]) | length == 0 or
+        ns_info.resources[0].status.phase != 'Active'
+      loop: "{{ tenant_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Tenant applications are Synced and Healthy
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ item }}"
+      register: tenant_app_info
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: >-
+        tenant_app_info.resources | default([]) | length > 0 and
+        tenant_app_info.resources[0].status.sync.status == 'Synced' and
+        tenant_app_info.resources[0].status.health.status == 'Healthy'
+      failed_when: >-
+        tenant_app_info.resources | default([]) | length == 0 or
+        tenant_app_info.resources[0].status.sync.status != 'Synced' or
+        tenant_app_info.resources[0].status.health.status != 'Healthy'
+      loop: "{{ tenant_apps }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Infrastructure bootstrap application completed its sync
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ bootstrap_app }}"
+      register: bootstrap_info
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: >-
+        bootstrap_info.resources | default([]) | length > 0 and
+        bootstrap_info.resources[0].status.health.status == 'Healthy' and
+        bootstrap_info.resources[0].status.operationState.phase == 'Succeeded'
+      failed_when: >-
+        bootstrap_info.resources | default([]) | length == 0 or
+        bootstrap_info.resources[0].status.health.status != 'Healthy' or
+        bootstrap_info.resources[0].status.operationState.phase != 'Succeeded'
+
+    - name: Read the SAW application
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ saw_app }}"
+      register: saw_app_info
+      changed_when: false
+
+    - name: SAW application is Synced and Healthy
+      ansible.builtin.assert:
+        that:
+          - saw_app_info.resources[0].status.sync.status == 'Synced'
+          - saw_app_info.resources[0].status.health.status == 'Healthy'
+        fail_msg: >-
+          saw-users-{{ tenant_guid }} is
+          sync={{ saw_app_info.resources[0].status.sync.status | default('?') }}
+          health={{ saw_app_info.resources[0].status.health.status | default('?') }}.
+          The SAW tabs will not work.
+        quiet: true
+      when: saw_app_info.resources | length > 0
+
+    - name: Tenant deployments are available
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ item }}"
+      register: deployments
+      changed_when: false
+      retries: 24
+      delay: 5
+      until: >-
+        deployments.resources | length > 0 and
+        (deployments.resources | map(attribute='status.availableReplicas', default=0) | map('int') | sum)
+        >= (deployments.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      failed_when: >-
+        deployments.resources | length == 0 or
+        (deployments.resources | map(attribute='status.availableReplicas', default=0) | map('int') | sum)
+        < (deployments.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      loop: "{{ tenant_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Tenant StatefulSets are ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: StatefulSet
+        namespace: "{{ item }}"
+      register: statefulsets
+      changed_when: false
+      retries: 24
+      delay: 5
+      until: >-
+        statefulsets.resources | length == 0 or
+        (statefulsets.resources | map(attribute='status.readyReplicas', default=0) | map('int') | sum)
+        >= (statefulsets.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      failed_when: >-
+        (statefulsets.resources | map(attribute='status.readyReplicas', default=0) | map('int') | sum)
+        < (statefulsets.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      loop: "{{ tenant_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # Route checks only prove ingress and TLS terminate. The services behind
+    # them are covered by the API checks below.
+    - name: Tenant routes answer
+      ansible.builtin.uri:
+        url: "{{ item.url }}"
+        method: GET
+        status_code: "{{ item.status_code }}"
+        follow_redirects: none
+        validate_certs: false
+        timeout: 15
+      register: route_check
+      changed_when: false
+      failed_when: route_check.status not in item.status_code
+      loop: "{{ routes }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # RAG is the flagship demo: the answer must be grounded in the five
+    # preloaded knowledge bases, so an empty vector store set means the
+    # ingestion pipelines never ran (or ran before the model key was wired).
+    - name: RAG knowledge bases are loaded
+      ansible.builtin.uri:
+        url: "{{ llama_stack_url }}/v1/vector_stores"
+        method: GET
+        status_code: [200]
+        return_content: true
+        timeout: 20
+      register: vector_stores_info
+      changed_when: false
+      failed_when: false
+
+    - name: Assert every preloaded knowledge base is present
+      ansible.builtin.assert:
+        that:
+          - vector_stores_info.status | default(0) == 200
+          - item in (vector_stores_info.content | default(''))
+        fail_msg: >-
+          Knowledge base {{ item }} is missing from llama-stack at
+          {{ llama_stack_url }} (HTTP {{ vector_stores_info.status | default('unreachable') }}).
+          Module 2's grounded-answer demo will fail.
+        quiet: true
+      loop: "{{ vector_stores }}"
+
+    - name: Webmail test server is healthy
+      ansible.builtin.uri:
+        url: "https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain }}/health"
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: webmail_health
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the Webmail test server responds
+      ansible.builtin.assert:
+        that:
+          - webmail_health.status | default(0) == 200
+        fail_msg: >-
+          The Webmail test server did not answer /health
+          (HTTP {{ webmail_health.status | default('unreachable') }}).
+          Module 4 cannot send or receive the demo email.
+        quiet: true
+
+    - name: Pre-seeded Webmail inboxes are readable
+      ansible.builtin.uri:
+        url: >-
+          https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain
+          }}/api/messages/{{ item }}
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: webmail_inbox
+      changed_when: false
+      failed_when: webmail_inbox.status != 200
+      loop:
+        - alice.johnson@company.com
+        - john.doe@company.com
+        - maria.garcia@company.com
+      loop_control:
+        label: "{{ item }}"
