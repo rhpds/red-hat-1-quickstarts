@@ -45,7 +45,14 @@ ifdef::ppe_jupyter_token[]
 . Sign in with the token `{ppe_jupyter_token}`.
 endif::[]
 ifndef::ppe_jupyter_token[]
-. Sign in with the token `changeme`.
+ifdef::openshell_password[]
+. Sign in with the token `{openshell_password}`.
+endif::[]
+ifndef::openshell_password[]
+. In *Password or token*, enter your assigned lab password.
++
+To confirm the configured token, open *OpenShift Console*, select project `user-{guid}-ppe`, and go to *Workloads → Secrets*. Open `ppe-{guid}-jupyter-training-auth`, click *Reveal values*, and use the value of `token`.
+endif::[]
 endif::[]
 . In the file browser, open the `training` folder, then open `yolo_training.ipynb`.
 . Click the first cell of the notebook, then click *+* in the toolbar to insert a new cell. Paste this code and press *Shift+Enter* to download the labeled dataset:
