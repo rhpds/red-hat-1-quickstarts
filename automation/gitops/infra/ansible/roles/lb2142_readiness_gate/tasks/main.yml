@@ -24,9 +24,10 @@
   register: _lb2142_gate
   changed_when: false
   failed_when: false
+  # regex_search is a filter, not a test: it returns the match or None.
   until: >-
     _lb2142_gate.status | default(0) == 200 and
-    not ((_lb2142_gate.content | default('')) is regex_search(_lb2142_gate_failure_regex))
+    ((_lb2142_gate.content | default('')) | regex_search(_lb2142_gate_failure_regex)) is none
   retries: "{{ lb2142_readiness_gate_retries }}"
   delay: "{{ lb2142_readiness_gate_delay }}"
   when: lb2142_readiness_gate_enabled | bool
@@ -50,7 +51,7 @@
   when:
     - lb2142_readiness_gate_enabled | bool
     - (_lb2142_gate.status | default(0) != 200) or
-      ((_lb2142_gate.content | default('')) is regex_search(_lb2142_gate_failure_regex))
+      (((_lb2142_gate.content | default('')) | regex_search(_lb2142_gate_failure_regex)) is not none)
 
 - name: Readiness gate passed
   ansible.builtin.debug:
