@@ -1,0 +1,141 @@
+---
+# E2E — does the learner's happy path actually work on this seat?
+#
+# Served by the Showroom runner at /stream/qa/e2e and behind the Nookbag
+# "E2E" button. This is deliberately separate from healthcheck.yml:
+#
+#   healthcheck  -> "is the environment correct?" (readiness gate)
+#   e2e          -> "can a learner do the thing?" (functional smoke)
+#
+# Read-only: every call exercises an existing endpoint; nothing is created,
+# sent or deleted.
+
+- name: LB2142 AI Quickstarts tenant end-to-end smoke
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    user_data: >-
+      {{
+        (lookup('file', '/user_data/user_data.yml', errors='ignore') | default('', true) | from_yaml)
+        or {}
+      }}
+    domain: >-
+      {{ user_data.openshift_cluster_ingress_domain | default(lookup('env', 'DOMAIN'), true) }}
+    tenant_user: "{{ user_data.user | default('user-' ~ tenant_guid) }}"
+    rag_ns: "{{ tenant_user }}-rag"
+    it_selfsvc_ns: "{{ tenant_user }}-it-selfsvc"
+  tasks:
+    - name: Find the llama-stack pod
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ rag_ns }}"
+      register: rag_pods
+      changed_when: false
+      failed_when: >-
+        (rag_pods.resources | default([]) | selectattr('metadata.name', 'match', '^llamastack-')
+         | list | length) != 1
+
+    - name: Ask the RAG model a question and read the answer
+      kubernetes.core.k8s_exec:
+        namespace: "{{ rag_ns }}"
+        pod: >-
+          {{ rag_pods.resources | selectattr('metadata.name', 'match', '^llamastack-')
+             | map(attribute='metadata.name') | first }}
+        container: llama-stack
+        command:
+          - python3
+          - -c
+          - |
+            import json, urllib.request
+            base = "http://localhost:8321/v1"
+            models = json.load(urllib.request.urlopen(base + "/models", timeout=20))["data"]
+            model = next(m["id"] for m in models if m.get("model_type", "llm") == "llm")
+            req = urllib.request.Request(
+                base + "/chat/completions",
+                data=json.dumps({"model": model,
+                                 "messages": [{"role": "user",
+                                               "content": "In one sentence, what is CloudSync?"}],
+                                 "max_tokens": 80}).encode(),
+                headers={"Content-Type": "application/json"})
+            body = json.load(urllib.request.urlopen(req, timeout=90))
+            answer = (body["choices"][0]["message"].get("content") or "").strip()
+            print(json.dumps({"model": model, "answer": answer[:400], "empty": not answer}))
+      register: rag_ask
+      changed_when: false
+      failed_when: rag_ask.rc | default(1) != 0
+
+    - name: The model returned a non-empty answer
+      ansible.builtin.assert:
+        that:
+          - ((rag_ask.stdout | from_json).answer | length) > 0
+        fail_msg: >-
+          The RAG model answered with an empty message
+          ({{ rag_ask.stdout | default('no output') }}).
+        quiet: true
+
+    - name: OpenClaw redirects unauthenticated visitors to Keycloak
+      ansible.builtin.uri:
+        url: "https://user-{{ tenant_guid }}-default-notebook-ui.{{ domain }}/"
+        method: GET
+        status_code: [302, 303, 307]
+        follow_redirects: none
+        validate_certs: false
+        timeout: 20
+      register: openclaw_redirect
+      changed_when: false
+
+    - name: The Keycloak sign-in page serves
+      ansible.builtin.uri:
+        url: "{{ openclaw_redirect.location }}"
+        method: GET
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: false
+        timeout: 20
+        return_content: true
+      register: keycloak_page
+      changed_when: false
+
+    - name: The Keycloak page is a sign-in form
+      ansible.builtin.assert:
+        that:
+          - keycloak_page.content | default('') | lower is search('sign in|keycloak')
+        fail_msg: >-
+          OpenClaw redirected to {{ openclaw_redirect.location | default('nowhere') }}
+          but the page does not look like a Keycloak sign-in form.
+        quiet: true
+
+    - name: A pre-seeded Webmail inbox is readable
+      ansible.builtin.uri:
+        url: >-
+          https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain
+          }}/api/messages/alice.johnson@company.com
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 20
+        return_content: true
+      register: webmail_inbox
+      changed_when: false
+
+    - name: The Webmail inbox contains messages
+      ansible.builtin.assert:
+        that:
+          - webmail_inbox.content | default('') | trim not in ['', '[]', 'null']
+        fail_msg: >-
+          The seeded Webmail inbox for alice.johnson@company.com is empty.
+          Module 4's send/receive demo will not work.
+        quiet: true
+
+    - name: End-to-end summary
+      ansible.builtin.debug:
+        msg:
+          - "RAG answer: {{ (rag_ask.stdout | from_json).answer }}"
+          - "OpenClaw -> {{ openclaw_redirect.location | default('?') }}"
+          - "Webmail inbox: {{ webmail_inbox.status }}"
