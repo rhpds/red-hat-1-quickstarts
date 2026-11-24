@@ -29,54 +29,66 @@
     tenant_user: "{{ user_data.user | default('user-' ~ tenant_guid) }}"
     rag_ns: "{{ tenant_user }}-rag"
     it_selfsvc_ns: "{{ tenant_user }}-it-selfsvc"
+    # llama-stack answers the runner directly over its Service. Using uri
+    # rather than k8s_exec keeps this independent of pods/exec RBAC (the
+    # runner has none in its own namespace) and of k8s_exec's `command`
+    # parameter, which is a string — not a list — in kubernetes.core 6.x.
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
   tasks:
-    - name: Find the llama-stack pod
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ rag_ns }}"
-      register: rag_pods
+    - name: List the models llama-stack serves
+      ansible.builtin.uri:
+        url: "{{ llama_stack_url }}/models"
+        method: GET
+        status_code: [200]
+        timeout: 30
+      register: model_list
       changed_when: false
-      failed_when: >-
-        (rag_pods.resources | default([]) | selectattr('metadata.name', 'match', '^llamastack-')
-         | list | length) != 1
+      retries: 18
+      delay: 10
+      until: (model_list.json.data | default([]) | length) > 0
+      failed_when: (model_list.json.data | default([]) | length) == 0
+
+    - name: Pick the RAG answer model
+      ansible.builtin.set_fact:
+        rag_model: >-
+          {{ (model_list.json.data | map(attribute='id') | list
+              | select('search', 'llama-scout') | list
+              | first) | default('', true) }}
+
+    - name: The RAG answer model is registered
+      ansible.builtin.assert:
+        that:
+          - rag_model | length > 0
+        fail_msg: >-
+          llama-stack serves {{ model_list.json.data | map(attribute='id') | join(', ') }}
+          but no llama-scout model. Modules 2 and 3 answer with llama-scout-17b.
+        quiet: true
 
     - name: Ask the RAG model a question and read the answer
-      kubernetes.core.k8s_exec:
-        namespace: "{{ rag_ns }}"
-        pod: >-
-          {{ rag_pods.resources | selectattr('metadata.name', 'match', '^llamastack-')
-             | map(attribute='metadata.name') | first }}
-        container: llama-stack
-        command:
-          - python3
-          - -c
-          - |
-            import json, urllib.request
-            base = "http://localhost:8321/v1"
-            models = json.load(urllib.request.urlopen(base + "/models", timeout=20))["data"]
-            model = next(m["id"] for m in models if m.get("model_type", "llm") == "llm")
-            req = urllib.request.Request(
-                base + "/chat/completions",
-                data=json.dumps({"model": model,
-                                 "messages": [{"role": "user",
-                                               "content": "In one sentence, what is CloudSync?"}],
-                                 "max_tokens": 80}).encode(),
-                headers={"Content-Type": "application/json"})
-            body = json.load(urllib.request.urlopen(req, timeout=90))
-            answer = (body["choices"][0]["message"].get("content") or "").strip()
-            print(json.dumps({"model": model, "answer": answer[:400], "empty": not answer}))
+      ansible.builtin.uri:
+        url: "{{ llama_stack_url }}/chat/completions"
+        method: POST
+        body_format: json
+        body:
+          model: "{{ rag_model }}"
+          messages:
+            - role: user
+              content: In one sentence, what is CloudSync?
+          max_tokens: 80
+        status_code: [200]
+        timeout: 120
       register: rag_ask
       changed_when: false
-      failed_when: rag_ask.rc | default(1) != 0
 
     - name: The model returned a non-empty answer
       ansible.builtin.assert:
         that:
-          - ((rag_ask.stdout | from_json).answer | length) > 0
+          - >-
+            ((rag_ask.json.choices | default([]) | first).message.content
+             | default('', true) | trim | length) > 0
         fail_msg: >-
-          The RAG model answered with an empty message
-          ({{ rag_ask.stdout | default('no output') }}).
+          {{ rag_model }} answered with an empty message
+          ({{ rag_ask.json | default('no output') | to_json | truncate(400) }}).
         quiet: true
 
     - name: OpenClaw redirects unauthenticated visitors to Keycloak
@@ -136,6 +148,6 @@
     - name: End-to-end summary
       ansible.builtin.debug:
         msg:
-          - "RAG answer: {{ (rag_ask.stdout | from_json).answer }}"
+          - "RAG answer ({{ rag_model }}): {{ (rag_ask.json.choices | default([]) | first).message.content | default('') }}"
           - "OpenClaw -> {{ openclaw_redirect.location | default('?') }}"
           - "Webmail inbox: {{ webmail_inbox.status }}"
