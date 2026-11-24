@@ -1,0 +1,444 @@
+---
+# HEALTHCHECK — can this LB2142 tenant be signed off?
+#
+# This is the readiness gate. It is served by the Showroom runner at
+#   /stream/qa/healthcheck
+# which backs both the Nookbag "Healthcheck" button and the provisioning gate
+# role `rhpds.quickstarts.lb2142_readiness_gate`, so a human and the deployer
+# run exactly the same code.
+#
+# Read-only and non-mutating. Exit 0 = ready, non-zero = not ready.
+#
+# Scope: what this tenant and its Argo CD Applications create. Base cluster
+# infrastructure is out of scope.
+
+- name: LB2142 AI Quickstarts tenant health check
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  # Every kubernetes.core call runs as the runtime-automation identity
+  # (cluster-admin, from the runtime-automation-kubeconfig Secret) rather than
+  # the pod's namespace-scoped `edit` service account, which cannot read
+  # Applications in openshift-gitops.
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ k8s_kubeconfig | default(omit) }}"
+  vars:
+    repo_path: /showroom/repo
+    tenant_guid: "{{ guid | default(lookup('env', 'GUID'), true) }}"
+    user_data: >-
+      {{
+        (lookup('file', '/user_data/user_data.yml', errors='ignore') | default('', true) | from_yaml)
+        or {}
+      }}
+    domain: >-
+      {{ user_data.openshift_cluster_ingress_domain | default(lookup('env', 'DOMAIN'), true) }}
+    tenant_user: "{{ user_data.user | default('user-' ~ tenant_guid) }}"
+    showroom_ns: "{{ tenant_user }}-showroom"
+    rag_ns: "{{ tenant_user }}-rag"
+    it_selfsvc_ns: "{{ tenant_user }}-it-selfsvc"
+    ppe_ns: "{{ tenant_user }}-ppe"
+    tenant_namespaces:
+      - "{{ rag_ns }}"
+      - "{{ it_selfsvc_ns }}"
+      - "{{ ppe_ns }}"
+      - "{{ showroom_ns }}"
+    bootstrap_app: "quickstart-tenant-{{ tenant_guid }}"
+    tenant_apps:
+      - "tenant-{{ tenant_guid }}"
+      - "it-selfsvc-{{ tenant_guid }}"
+      - "ppe-{{ tenant_guid }}"
+    # Container mode: saw-users-<guid> is the workspace set, saw-user-<guid> is
+    # the per-tenant sandbox. Both must be present or the OpenClaw tab is dead.
+    saw_apps:
+      - "saw-users-{{ tenant_guid }}"
+      - "saw-user-{{ tenant_guid }}"
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
+    # Expected documents per knowledge base. Source:
+    # https://github.com/rh-ai-quickstart/RAG (main) -> notebooks/<kb>.
+    # A store with fewer documents is a partial ingest, not a pass.
+    expected_documents:
+      hr-vector-db-v1-0: 1
+      legal-vector-db-v1-0: 1
+      sales-vector-db-v1-0: 1
+      procurement-vector-db-v1-0: 1
+      techsupport-vector-db-v1-0: 9
+    models_expected:
+      - gpt-oss-120b
+      - llama-scout-17b
+    routes:
+      - name: RAG UI
+        url: "https://tenant-{{ tenant_guid }}-rag-{{ rag_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+      - name: Showroom
+        url: "https://showroom-{{ showroom_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+      - name: Webmail
+        url: "https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+      - name: PPE Monitor
+        url: "https://ppe-{{ tenant_guid }}-{{ ppe_ns }}.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+      # Container mode: the per-sandbox relay, not the VM webui route.
+      - name: OpenClaw
+        url: "https://user-{{ tenant_guid }}-default-notebook-ui.{{ domain }}"
+        status_code: [200, 302, 303, 307]
+  tasks:
+    - name: Showroom content repository is checked out
+      ansible.builtin.stat:
+        path: "{{ repo_path }}/content/modules/ROOT/nav.adoc"
+      register: content_stat
+      failed_when: not content_stat.stat.exists
+      changed_when: false
+
+    - name: Cluster API is reachable
+      ansible.builtin.command:
+        cmd: oc whoami
+      register: oc_whoami
+      changed_when: false
+      failed_when: oc_whoami.rc != 0
+
+    - name: Tenant user data is available to the runner
+      ansible.builtin.assert:
+        that:
+          - domain | length > 0
+        fail_msg: >-
+          /user_data/user_data.yml and the DOMAIN environment variable are both
+          empty, so the tenant's ingress domain is unknown.
+        quiet: true
+
+    - name: Tenant namespaces exist and are Active
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ item }}"
+      register: ns_info
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: >-
+        ns_info.resources | default([]) | length > 0 and
+        ns_info.resources[0].status.phase == 'Active'
+      failed_when: >-
+        ns_info.resources | default([]) | length == 0 or
+        ns_info.resources[0].status.phase != 'Active'
+      loop: "{{ tenant_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Tenant applications are Synced and Healthy
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ item }}"
+      register: tenant_app_info
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: >-
+        tenant_app_info.resources | default([]) | length > 0 and
+        tenant_app_info.resources[0].status.sync.status == 'Synced' and
+        tenant_app_info.resources[0].status.health.status == 'Healthy'
+      failed_when: >-
+        tenant_app_info.resources | default([]) | length == 0 or
+        tenant_app_info.resources[0].status.sync.status != 'Synced' or
+        tenant_app_info.resources[0].status.health.status != 'Healthy'
+      loop: "{{ tenant_apps }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Infrastructure bootstrap application completed its sync
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ bootstrap_app }}"
+      register: bootstrap_info
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: >-
+        bootstrap_info.resources | default([]) | length > 0 and
+        bootstrap_info.resources[0].status.health.status == 'Healthy' and
+        bootstrap_info.resources[0].status.operationState.phase == 'Succeeded'
+      failed_when: >-
+        bootstrap_info.resources | default([]) | length == 0 or
+        bootstrap_info.resources[0].status.health.status != 'Healthy' or
+        bootstrap_info.resources[0].status.operationState.phase != 'Succeeded'
+
+    - name: SAW applications are Synced and Healthy
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ item }}"
+      register: saw_app_info
+      changed_when: false
+      failed_when: >-
+        saw_app_info.resources | default([]) | length == 0 or
+        saw_app_info.resources[0].status.sync.status != 'Synced' or
+        saw_app_info.resources[0].status.health.status != 'Healthy'
+      loop: "{{ saw_apps }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Tenant deployments are available
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ item }}"
+      register: deployments
+      changed_when: false
+      retries: 24
+      delay: 5
+      until: >-
+        deployments.resources | length > 0 and
+        (deployments.resources | map(attribute='status.availableReplicas', default=0) | map('int') | sum)
+        >= (deployments.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      failed_when: >-
+        deployments.resources | length == 0 or
+        (deployments.resources | map(attribute='status.availableReplicas', default=0) | map('int') | sum)
+        < (deployments.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      loop: "{{ tenant_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Tenant StatefulSets are ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: StatefulSet
+        namespace: "{{ item }}"
+      register: statefulsets
+      changed_when: false
+      retries: 24
+      delay: 5
+      until: >-
+        statefulsets.resources | length == 0 or
+        (statefulsets.resources | map(attribute='status.readyReplicas', default=0) | map('int') | sum)
+        >= (statefulsets.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      failed_when: >-
+        (statefulsets.resources | map(attribute='status.readyReplicas', default=0) | map('int') | sum)
+        < (statefulsets.resources | map(attribute='spec.replicas', default=0) | map('int') | sum)
+      loop: "{{ tenant_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Tenant routes answer
+      ansible.builtin.uri:
+        url: "{{ item.url }}"
+        method: GET
+        status_code: "{{ item.status_code }}"
+        follow_redirects: none
+        validate_certs: false
+        timeout: 15
+      register: route_check
+      changed_when: false
+      failed_when: route_check.status not in item.status_code
+      loop: "{{ routes }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # --- RAG knowledge bases -------------------------------------------------
+    # Asking llama-stack for /v1/vector_stores only proves the stores exist.
+    # The defect this gate exists for is stores that exist but hold no
+    # documents, so we count files per store and compare with the source repo.
+
+    - name: Find the llama-stack pod
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ rag_ns }}"
+      register: rag_pods
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: >-
+        (rag_pods.resources | default([]) | selectattr('metadata.name', 'match', '^llamastack-')
+         | list | length) == 1
+      failed_when: >-
+        (rag_pods.resources | default([]) | selectattr('metadata.name', 'match', '^llamastack-')
+         | list | length) != 1
+
+    - name: Read vector store document counts from llama-stack
+      kubernetes.core.k8s_exec:
+        namespace: "{{ rag_ns }}"
+        pod: >-
+          {{ rag_pods.resources | selectattr('metadata.name', 'match', '^llamastack-')
+             | map(attribute='metadata.name') | first }}
+        container: llama-stack
+        command:
+          - python3
+          - -c
+          - |
+            import json, urllib.request
+            base = "http://localhost:8321/v1"
+            data = json.load(urllib.request.urlopen(base + "/vector_stores", timeout=25)).get("data", [])
+            # Keep it a list of pairs so duplicate store names stay visible;
+            # a dict would silently collapse them.
+            stores = []
+            for v in data:
+                files = json.load(urllib.request.urlopen(
+                    base + "/vector_stores/%s/files" % v["id"], timeout=25)).get("data", [])
+                stores.append([v["name"], len(files)])
+            print(json.dumps({"stores": stores}))
+      register: store_exec
+      changed_when: false
+      failed_when: store_exec.rc | default(0) != 0
+
+    - name: Parse vector store inventory
+      ansible.builtin.set_fact:
+        store_list: "{{ (store_exec.stdout | from_json).stores }}"
+        store_map: "{{ dict((store_exec.stdout | from_json).stores) }}"
+
+    - name: Assert five stores exist with no duplicate names
+      ansible.builtin.assert:
+        that:
+          - store_list | length == 5
+          - store_list | map(attribute=0) | list | unique | length == 5
+        fail_msg: >-
+          Found {{ store_list | length }} vector stores named
+          {{ store_list | map(attribute=0) | list | join(', ') or 'none' }}.
+          Expected five, one per knowledge base. A missing store means its
+          ingestion pipeline never created it; a duplicate name means store
+          creation is not idempotent.
+        quiet: true
+
+    - name: Assert the five expected knowledge bases exist
+      ansible.builtin.assert:
+        that:
+          - store_map.keys() | list | sort == expected_documents.keys() | list | sort
+        fail_msg: >-
+          Expected {{ expected_documents.keys() | list | sort | join(', ') }} but
+          found {{ store_map.keys() | list | sort | join(', ') }}.
+        quiet: true
+
+    - name: Assert every knowledge base holds its expected documents
+      ansible.builtin.assert:
+        that:
+          - (store_map[item.key] | int) == (item.value | int)
+        fail_msg: >-
+          {{ item.key }} holds {{ store_map[item.key] | default('no') }}
+          documents, expected {{ item.value }}. Ingestion did not complete;
+          module 2's grounded answers will be wrong or empty.
+        quiet: true
+      loop: "{{ expected_documents | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    # --- Model key -----------------------------------------------------------
+    # One virtual key must reach both models; RAG/ITSS/PPE use llama-scout-17b
+    # and SAW uses gpt-oss-120b.
+
+    - name: Read the RAG model endpoint and token
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: ConfigMap
+        namespace: "{{ rag_ns }}"
+        name: run-config
+      register: run_config
+      changed_when: false
+      failed_when: (run_config.resources | default([]) | length) != 1
+
+    - name: Extract the MaaS endpoint and key
+      ansible.builtin.set_fact:
+        maas_url: >-
+          {{ run_config.resources[0].data['config.yaml']
+             | regex_search('base_url:\s*(\S+)', '\1') | first }}
+        maas_key: >-
+          {{ run_config.resources[0].data['config.yaml']
+             | regex_search('api_token:\s*(\S+)', '\1') | first }}
+
+    - name: Both models answer with the tenant key
+      kubernetes.core.k8s_exec:
+        namespace: "{{ rag_ns }}"
+        pod: >-
+          {{ rag_pods.resources | selectattr('metadata.name', 'match', '^llamastack-')
+             | map(attribute='metadata.name') | first }}
+        container: llama-stack
+        command:
+          - python3
+          - -c
+          - |
+            import json, sys, urllib.request
+            base, key = sys.argv[1].rstrip('/'), sys.argv[2]
+            models = sys.argv[3].split(',')
+            ok, results = True, {}
+            for model in models:
+                req = urllib.request.Request(
+                    base + "/v1/chat/completions",
+                    data=json.dumps({"model": model,
+                                     "messages": [{"role": "user", "content": "say ok"}],
+                                     "max_tokens": 5}).encode(),
+                    headers={"Authorization": "Bearer " + key,
+                             "Content-Type": "application/json"})
+                try:
+                    urllib.request.urlopen(req, timeout=60)
+                    results[model] = "ok"
+                except Exception as exc:
+                    ok = False
+                    results[model] = str(exc)[:200]
+            print(json.dumps({"ok": ok, "results": results}))
+            sys.exit(0 if ok else 1)
+          - "{{ maas_url }}"
+          - "{{ maas_key }}"
+          - "{{ models_expected | join(',') }}"
+      register: model_exec
+      changed_when: false
+      failed_when: false
+
+    - name: Assert both models are callable
+      ansible.builtin.assert:
+        that:
+          - model_exec.rc | default(1) == 0
+        fail_msg: >-
+          The tenant key cannot call both models: {{ model_exec.stdout | default('no output') }}.
+          RAG/ITSS/PPE need llama-scout-17b and SAW needs gpt-oss-120b.
+        quiet: true
+
+    # --- Webmail -------------------------------------------------------------
+    - name: Webmail test server is healthy
+      ansible.builtin.uri:
+        url: "https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain }}/health"
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: webmail_health
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the Webmail test server responds
+      ansible.builtin.assert:
+        that:
+          - webmail_health.status | default(0) == 200
+        fail_msg: >-
+          The Webmail test server did not answer /health
+          (HTTP {{ webmail_health.status | default('unreachable') }}).
+        quiet: true
+
+    - name: Pre-seeded Webmail inboxes are readable
+      ansible.builtin.uri:
+        url: >-
+          https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain
+          }}/api/messages/{{ item }}
+        method: GET
+        status_code: [200]
+        validate_certs: false
+        timeout: 15
+      register: webmail_inbox
+      changed_when: false
+      failed_when: webmail_inbox.status != 200
+      loop:
+        - alice.johnson@company.com
+        - john.doe@company.com
+        - maria.garcia@company.com
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Health check summary
+      ansible.builtin.debug:
+        msg:
+          - "tenant: {{ tenant_user }} ({{ domain }})"
+          - "knowledge bases: {{ store_map | to_json }}"
+          - "models: {{ models_expected | join(', ') }} -> {{ (model_exec.stdout | from_json).results | default({}) | to_json }}"

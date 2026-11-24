@@ -1,0 +1,59 @@
+---
+- name: Readiness gate is enabled
+  ansible.builtin.set_fact:
+    _lb2142_gate_url: >-
+      {{ lb2142_readiness_gate_scheme }}://showroom-{{ lb2142_readiness_gate_showroom_namespace
+      }}.{{ lb2142_readiness_gate_domain }}{{ lb2142_readiness_gate_path }}
+    _lb2142_gate_failure_regex: >-
+      {{ lb2142_readiness_gate_failure_markers | map('regex_escape') | join('|') }}
+
+- name: Skip the readiness gate
+  ansible.builtin.debug:
+    msg: "lb2142_readiness_gate_enabled is false; not gating provisioning."
+  when: not (lb2142_readiness_gate_enabled | bool)
+
+- name: Poll the Showroom readiness endpoint
+  ansible.builtin.uri:
+    url: "{{ _lb2142_gate_url }}"
+    method: GET
+    status_code: [200]
+    validate_certs: false
+    timeout: 900
+    follow_redirects: none
+    return_content: true
+  register: _lb2142_gate
+  changed_when: false
+  failed_when: false
+  # regex_search is a filter, not a test: it returns the match or None.
+  until: >-
+    _lb2142_gate.status | default(0) == 200 and
+    ((_lb2142_gate.content | default('')) | regex_search(_lb2142_gate_failure_regex)) is none
+  retries: "{{ lb2142_readiness_gate_retries }}"
+  delay: "{{ lb2142_readiness_gate_delay }}"
+  when: lb2142_readiness_gate_enabled | bool
+
+- name: Explain the readiness gate result
+  ansible.builtin.fail:
+    msg: >-
+      The LB2142 tenant at {{ _lb2142_gate_url }} never reported ready
+      (last HTTP {{ _lb2142_gate.status | default('unreachable') }}).
+      {% if _lb2142_gate.status | default(0) == 404 %}
+      The Showroom runner does not serve /stream/qa/healthcheck. Check that
+      ocp4_workload_showroom_runtime_automation_enable is true and that the
+      content repo carries both runtime-automation/ and qa-automation/.
+      {% else %}
+      Run the same check interactively with:
+        curl -skN {{ _lb2142_gate_url }}
+      It runs qa-automation/healthcheck.yml (knowledge-base document counts,
+      both model names, Argo health, routes, Webmail). The last output was:
+        {{ _lb2142_gate.content | default('(empty)') | truncate(2000) }}
+      {% endif %}
+  when:
+    - lb2142_readiness_gate_enabled | bool
+    - (_lb2142_gate.status | default(0) != 200) or
+      (((_lb2142_gate.content | default('')) | regex_search(_lb2142_gate_failure_regex)) is not none)
+
+- name: Readiness gate passed
+  ansible.builtin.debug:
+    msg: "LB2142 tenant is ready: {{ _lb2142_gate_url }}"
+  when: lb2142_readiness_gate_enabled | bool

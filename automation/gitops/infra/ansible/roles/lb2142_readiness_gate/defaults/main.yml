@@ -1,0 +1,20 @@
+---
+# Provisioning gate for LB2142 tenants.
+#
+# Calls the Showroom runner's readiness endpoint and fails the provisioning
+# run when the seat is not usable. The endpoint runs qa-automation/healthcheck.yml,
+# the same playbook behind the Nookbag "Healthcheck" button, so the human view
+# and the gate cannot diverge.
+lb2142_readiness_gate_enabled: true
+lb2142_readiness_gate_showroom_namespace: "{{ ocp4_workload_tenant_keycloak_username }}-showroom"
+lb2142_readiness_gate_domain: "{{ openshift_cluster_ingress_domain }}"
+lb2142_readiness_gate_path: /stream/qa/healthcheck
+lb2142_readiness_gate_scheme: https
+# Ingestion can take a while after the Showroom is up; give it room but fail.
+lb2142_readiness_gate_retries: 60
+lb2142_readiness_gate_delay: 30
+# Markers that mean the healthcheck ran and reported a failure.
+lb2142_readiness_gate_failure_markers:
+  - "FAILED!"
+  - '"failed": true'
+  - '"rc": 2'
