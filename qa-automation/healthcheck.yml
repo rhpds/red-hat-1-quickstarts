@@ -57,7 +57,7 @@
     # openshift-gitops from the Showroom deployer chart.
     # llama-stack answers the runner directly over its Service; calling it
     # with uri avoids pods/exec RBAC and a k8s_exec `command` type mismatch.
-    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321/v1"
     # Expected documents per knowledge base. Source:
     # https://github.com/rh-ai-quickstart/RAG (main) -> notebooks/<kb>.
     # A store with fewer documents is a partial ingest, not a pass.

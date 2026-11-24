@@ -33,7 +33,7 @@
     # rather than k8s_exec keeps this independent of pods/exec RBAC (the
     # runner has none in its own namespace) and of k8s_exec's `command`
     # parameter, which is a string — not a list — in kubernetes.core 6.x.
-    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321/v1"
   tasks:
     - name: List the models llama-stack serves
       ansible.builtin.uri:
