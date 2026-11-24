@@ -199,10 +199,25 @@
         timeout: 30
       register: store_index
       changed_when: false
+      # Stores appear before their documents do; wait for the stores themselves.
       retries: 18
       delay: 10
       until: (store_index.json.data | default([]) | length) > 0
-      failed_when: (store_index.json.data | default([]) | length) == 0
+      failed_when: false
+
+    - name: llama-stack has vector stores
+      ansible.builtin.assert:
+        that:
+          - (store_index.json.data | default([]) | length) > 0
+        fail_msg: >-
+          llama-stack reports no vector stores (HTTP
+          {{ store_index.status | default('unreachable') }}), so no knowledge
+          base exists and modules 2 and 3 cannot answer. Store creation happens
+          in the fetch-and-store pipeline: check its pods in {{ rag_ns }}. A
+          failed artifact upload (for example NoSuchBucket because the DSPA did
+          not create the mlpipeline bucket) stops the pipeline before
+          store_documents runs.
+        quiet: true
 
     - name: Read vector store document counts from llama-stack
       ansible.builtin.uri:
