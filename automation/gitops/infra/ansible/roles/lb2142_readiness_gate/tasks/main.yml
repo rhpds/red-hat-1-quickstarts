@@ -6,6 +6,8 @@
       }}.{{ lb2142_readiness_gate_domain }}{{ lb2142_readiness_gate_path }}
     _lb2142_gate_failure_regex: >-
       {{ lb2142_readiness_gate_failure_markers | map('regex_escape') | join('|') }}
+    _lb2142_gate_success_regex: >-
+      {{ lb2142_readiness_gate_success_marker | regex_escape }}
 
 - name: Skip the readiness gate
   ansible.builtin.debug:
@@ -24,9 +26,13 @@
   register: _lb2142_gate
   changed_when: false
   failed_when: false
-  # regex_search is a filter, not a test: it returns the match or None.
+  # regex_search is a filter, not a test: it returns the match or None. The
+  # stream is only "ready" once the playbook has finished (recap present) and
+  # no failure marker appeared. Waiting for the recap matters: the endpoint
+  # returns 200 the moment streaming starts, so HTTP 200 alone proves nothing.
   until: >-
     _lb2142_gate.status | default(0) == 200 and
+    (_lb2142_gate.content | default('') | regex_search(_lb2142_gate_success_regex)) is not none and
     ((_lb2142_gate.content | default('')) | regex_search(_lb2142_gate_failure_regex)) is none
   retries: "{{ lb2142_readiness_gate_retries }}"
   delay: "{{ lb2142_readiness_gate_delay }}"
@@ -45,12 +51,17 @@
       Run the same check interactively with:
         curl -skN {{ _lb2142_gate_url }}
       It runs qa-automation/healthcheck.yml (knowledge-base document counts,
-      both model names, Argo health, routes, Webmail). The last output was:
+      both model names, Argo health, routes, Webmail). A result only counts
+      when the run finished, i.e. the PLAY RECAP line carries
+      {{ lb2142_readiness_gate_success_marker }}, and
+      {% for marker in lb2142_readiness_gate_failure_markers %}{{ '' if loop.first else ' / ' }}{{ marker }}{% endfor %}
+      are absent. The last output was:
         {{ _lb2142_gate.content | default('(empty)') | truncate(2000) }}
       {% endif %}
   when:
     - lb2142_readiness_gate_enabled | bool
     - (_lb2142_gate.status | default(0) != 200) or
+      ((_lb2142_gate.content | default('') | regex_search(_lb2142_gate_success_regex)) is none) or
       (((_lb2142_gate.content | default('')) | regex_search(_lb2142_gate_failure_regex)) is not none)
 
 - name: Readiness gate passed

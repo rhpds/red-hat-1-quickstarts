@@ -38,11 +38,16 @@
     rag_ns: "{{ tenant_user }}-rag"
     it_selfsvc_ns: "{{ tenant_user }}-it-selfsvc"
     ppe_ns: "{{ tenant_user }}-ppe"
+    # Namespaces the runner may inspect. showroom_ns is deliberately absent:
+    # the runner runs as system:serviceaccount:<showroom_ns>:runtime-automation,
+    # and the deployer chart binds ClusterRole/edit only to the `showroom`
+    # service account, so the runner has no RBAC in its own namespace and a
+    # Namespace GET there returns 403. Showroom's serving state is covered by
+    # the Showroom route in `routes` below (and by this very stream).
     tenant_namespaces:
       - "{{ rag_ns }}"
       - "{{ it_selfsvc_ns }}"
       - "{{ ppe_ns }}"
-      - "{{ showroom_ns }}"
     bootstrap_app: "quickstart-tenant-{{ tenant_guid }}"
     tenant_apps:
       - "tenant-{{ tenant_guid }}"
@@ -53,6 +58,8 @@
     saw_apps:
       - "saw-users-{{ tenant_guid }}"
       - "saw-user-{{ tenant_guid }}"
+    # llama-stack answers the runner directly over its Service; calling it
+    # with uri avoids pods/exec RBAC and a k8s_exec `command` type mismatch.
     llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
     # Expected documents per knowledge base. Source:
     # https://github.com/rh-ai-quickstart/RAG (main) -> notebooks/<kb>.
@@ -244,52 +251,42 @@
     # The defect this gate exists for is stores that exist but hold no
     # documents, so we count files per store and compare with the source repo.
 
-    - name: Find the llama-stack pod
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ rag_ns }}"
-      register: rag_pods
+    - name: List llama-stack vector stores
+      ansible.builtin.uri:
+        url: "{{ llama_stack_url }}/vector_stores?limit=100"
+        method: GET
+        status_code: [200]
+        timeout: 30
+      register: store_index
       changed_when: false
-      retries: 12
-      delay: 5
-      until: >-
-        (rag_pods.resources | default([]) | selectattr('metadata.name', 'match', '^llamastack-')
-         | list | length) == 1
-      failed_when: >-
-        (rag_pods.resources | default([]) | selectattr('metadata.name', 'match', '^llamastack-')
-         | list | length) != 1
+      retries: 18
+      delay: 10
+      until: (store_index.json.data | default([]) | length) > 0
+      failed_when: (store_index.json.data | default([]) | length) == 0
 
     - name: Read vector store document counts from llama-stack
-      kubernetes.core.k8s_exec:
-        namespace: "{{ rag_ns }}"
-        pod: >-
-          {{ rag_pods.resources | selectattr('metadata.name', 'match', '^llamastack-')
-             | map(attribute='metadata.name') | first }}
-        container: llama-stack
-        command:
-          - python3
-          - -c
-          - |
-            import json, urllib.request
-            base = "http://localhost:8321/v1"
-            data = json.load(urllib.request.urlopen(base + "/vector_stores", timeout=25)).get("data", [])
-            # Keep it a list of pairs so duplicate store names stay visible;
-            # a dict would silently collapse them.
-            stores = []
-            for v in data:
-                files = json.load(urllib.request.urlopen(
-                    base + "/vector_stores/%s/files" % v["id"], timeout=25)).get("data", [])
-                stores.append([v["name"], len(files)])
-            print(json.dumps({"stores": stores}))
-      register: store_exec
+      ansible.builtin.uri:
+        url: "{{ llama_stack_url }}/vector_stores/{{ item.id }}/files?limit=100"
+        method: GET
+        status_code: [200]
+        timeout: 30
+      register: store_files
       changed_when: false
-      failed_when: store_exec.rc | default(0) != 0
+      loop: "{{ store_index.json.data }}"
+      loop_control:
+        label: "{{ item.name }}"
 
-    - name: Parse vector store inventory
+    - name: Build the vector store inventory
       ansible.builtin.set_fact:
-        store_list: "{{ (store_exec.stdout | from_json).stores }}"
-        store_map: "{{ dict((store_exec.stdout | from_json).stores) }}"
+        # Keep it a list of pairs so duplicate store names stay visible; a
+        # dict would silently collapse them.
+        store_list: >-
+          {{ (store_files.results | map(attribute='item.name') | list)
+             | zip(store_files.results | map(attribute='json.data') | map('length') | list)
+             | list }}
+        store_map: >-
+          {{ dict((store_files.results | map(attribute='item.name') | list)
+                  | zip(store_files.results | map(attribute='json.data') | map('length') | list)) }}
 
     - name: Assert five stores exist with no duplicate names
       ansible.builtin.assert:
@@ -350,49 +347,37 @@
              | regex_search('api_token:\s*(\S+)', '\1') | first }}
 
     - name: Both models answer with the tenant key
-      kubernetes.core.k8s_exec:
-        namespace: "{{ rag_ns }}"
-        pod: >-
-          {{ rag_pods.resources | selectattr('metadata.name', 'match', '^llamastack-')
-             | map(attribute='metadata.name') | first }}
-        container: llama-stack
-        command:
-          - python3
-          - -c
-          - |
-            import json, sys, urllib.request
-            base, key = sys.argv[1].rstrip('/'), sys.argv[2]
-            models = sys.argv[3].split(',')
-            ok, results = True, {}
-            for model in models:
-                req = urllib.request.Request(
-                    base + "/v1/chat/completions",
-                    data=json.dumps({"model": model,
-                                     "messages": [{"role": "user", "content": "say ok"}],
-                                     "max_tokens": 5}).encode(),
-                    headers={"Authorization": "Bearer " + key,
-                             "Content-Type": "application/json"})
-                try:
-                    urllib.request.urlopen(req, timeout=60)
-                    results[model] = "ok"
-                except Exception as exc:
-                    ok = False
-                    results[model] = str(exc)[:200]
-            print(json.dumps({"ok": ok, "results": results}))
-            sys.exit(0 if ok else 1)
-          - "{{ maas_url }}"
-          - "{{ maas_key }}"
-          - "{{ models_expected | join(',') }}"
-      register: model_exec
+      ansible.builtin.uri:
+        url: "{{ maas_url | regex_replace('/+$', '') }}/v1/chat/completions"
+        method: POST
+        body_format: json
+        body:
+          model: "{{ item }}"
+          messages:
+            - role: user
+              content: say ok
+          max_tokens: 5
+        headers:
+          Authorization: "Bearer {{ maas_key }}"
+        status_code: [200]
+        timeout: 60
+      register: model_ask
       changed_when: false
       failed_when: false
+      loop: "{{ models_expected }}"
+      loop_control:
+        label: "{{ item }}"
 
     - name: Assert both models are callable
       ansible.builtin.assert:
         that:
-          - model_exec.rc | default(1) == 0
+          - model_ask.results | selectattr('status', 'defined') | map(attribute='status') | list
+            == ([200] * (models_expected | length))
         fail_msg: >-
-          The tenant key cannot call both models: {{ model_exec.stdout | default('no output') }}.
+          The tenant key cannot call both models:
+          {{ model_ask.results
+             | map(attribute='item') | zip(model_ask.results | map(attribute='status', default='unreachable'))
+             | list }}.
           RAG/ITSS/PPE need llama-scout-17b and SAW needs gpt-oss-120b.
         quiet: true
 
@@ -441,4 +426,4 @@
         msg:
           - "tenant: {{ tenant_user }} ({{ domain }})"
           - "knowledge bases: {{ store_map | to_json }}"
-          - "models: {{ models_expected | join(', ') }} -> {{ (model_exec.stdout | from_json).results | default({}) | to_json }}"
+          - "models: {{ model_ask.results | map(attribute='item') | zip(model_ask.results | map(attribute='status', default='unreachable')) | list }}"
