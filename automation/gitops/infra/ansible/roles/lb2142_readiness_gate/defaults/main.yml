@@ -13,10 +13,11 @@ lb2142_readiness_gate_scheme: https
 # Ingestion can take a while after the Showroom is up; give it room but fail.
 lb2142_readiness_gate_retries: 60
 lb2142_readiness_gate_delay: 30
-# The runner ends every stream with either "✓ Passed" or "✗ Failed (exit code N)",
-# and Ansible prints a PLAY RECAP before it. Require the recap and reject it if
-# any task failed: a stream that ends early (crash, killed container) never
-# produces failed=0, so the gate fails closed instead of passing on silence.
+# The runner ends a successful stream with "✓ Completed successfully!" and a
+# failing one with "✗ Failed (exit code N)"; Ansible prints a PLAY RECAP before
+# either. The gate requires the recap's failed=0: a stream that ends early
+# (crash, killed container, still running) never produces it, so the gate fails
+# closed instead of passing on silence.
 lb2142_readiness_gate_success_marker: "failed=0"
 # Markers that mean the healthcheck ran and reported a failure. These are plain
 # substrings (regex-escaped before use), so no character classes.

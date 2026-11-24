@@ -33,7 +33,7 @@
     # rather than k8s_exec keeps this independent of pods/exec RBAC (the
     # runner has none in its own namespace) and of k8s_exec's `command`
     # parameter, which is a string — not a list — in kubernetes.core 6.x.
-    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321/v1"
   tasks:
     - name: List the models llama-stack serves
       ansible.builtin.uri:
@@ -123,7 +123,10 @@
           but the page does not look like a Keycloak sign-in form.
         quiet: true
 
-    - name: A pre-seeded Webmail inbox is readable
+    # Inboxes start empty on purpose: module 4 tells the learner to send the
+    # first "Hello" email as Alice. So the smoke is that the mailbox exists and
+    # its message list parses — not that it already holds mail.
+    - name: The pre-seeded Webmail mailbox exists
       ansible.builtin.uri:
         url: >-
           https://test-email-server-ui-{{ it_selfsvc_ns }}.{{ domain
@@ -136,13 +139,15 @@
       register: webmail_inbox
       changed_when: false
 
-    - name: The Webmail inbox contains messages
+    - name: The Webmail mailbox answers with a message list
       ansible.builtin.assert:
         that:
-          - webmail_inbox.content | default('') | trim not in ['', '[]', 'null']
+          - webmail_inbox.json | type_debug == 'list'
         fail_msg: >-
-          The seeded Webmail inbox for alice.johnson@company.com is empty.
-          Module 4's send/receive demo will not work.
+          alice.johnson@company.com is not a usable test mailbox: the API
+          answered {{ webmail_inbox.status | default('unreachable') }} but not
+          with a message list. Module 4's send/receive demo needs the
+          pre-seeded users from the it-selfsvc chart.
         quiet: true
 
     - name: End-to-end summary
@@ -150,4 +155,4 @@
         msg:
           - "RAG answer ({{ rag_model }}): {{ (rag_ask.json.choices | default([]) | first).message.content | default('') }}"
           - "OpenClaw -> {{ openclaw_redirect.location | default('?') }}"
-          - "Webmail inbox: {{ webmail_inbox.status }}"
+          - "Webmail mailbox: {{ webmail_inbox.status }}, {{ webmail_inbox.json | default([]) | length }} message(s) already present"

@@ -48,19 +48,16 @@
       - "{{ rag_ns }}"
       - "{{ it_selfsvc_ns }}"
       - "{{ ppe_ns }}"
-    bootstrap_app: "quickstart-tenant-{{ tenant_guid }}"
-    tenant_apps:
-      - "tenant-{{ tenant_guid }}"
-      - "it-selfsvc-{{ tenant_guid }}"
-      - "ppe-{{ tenant_guid }}"
-    # Container mode: saw-users-<guid> is the workspace set, saw-user-<guid> is
-    # the per-tenant sandbox. Both must be present or the OpenClaw tab is dead.
-    saw_apps:
-      - "saw-users-{{ tenant_guid }}"
-      - "saw-user-{{ tenant_guid }}"
+    # No Argo Application checks here. The runner has no RBAC in
+    # openshift-gitops (list applications → 403), so a k8s_info on Application
+    # fails on every seat. Readiness is judged from what the runner can
+    # actually observe: the tenant namespaces' workloads, the public routes,
+    # the knowledge bases and both models. To restore Argo checks, grant the
+    # runtime-automation service account read on Application in
+    # openshift-gitops from the Showroom deployer chart.
     # llama-stack answers the runner directly over its Service; calling it
     # with uri avoids pods/exec RBAC and a k8s_exec `command` type mismatch.
-    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321"
+    llama_stack_url: "http://llamastack.{{ rag_ns }}.svc.cluster.local:8321/v1"
     # Expected documents per knowledge base. Source:
     # https://github.com/rh-ai-quickstart/RAG (main) -> notebooks/<kb>.
     # A store with fewer documents is a partial ingest, not a pass.
@@ -133,63 +130,6 @@
       loop_control:
         label: "{{ item }}"
 
-    - name: Tenant applications are Synced and Healthy
-      kubernetes.core.k8s_info:
-        api_version: argoproj.io/v1alpha1
-        kind: Application
-        namespace: openshift-gitops
-        name: "{{ item }}"
-      register: tenant_app_info
-      changed_when: false
-      retries: 12
-      delay: 5
-      until: >-
-        tenant_app_info.resources | default([]) | length > 0 and
-        tenant_app_info.resources[0].status.sync.status == 'Synced' and
-        tenant_app_info.resources[0].status.health.status == 'Healthy'
-      failed_when: >-
-        tenant_app_info.resources | default([]) | length == 0 or
-        tenant_app_info.resources[0].status.sync.status != 'Synced' or
-        tenant_app_info.resources[0].status.health.status != 'Healthy'
-      loop: "{{ tenant_apps }}"
-      loop_control:
-        label: "{{ item }}"
-
-    - name: Infrastructure bootstrap application completed its sync
-      kubernetes.core.k8s_info:
-        api_version: argoproj.io/v1alpha1
-        kind: Application
-        namespace: openshift-gitops
-        name: "{{ bootstrap_app }}"
-      register: bootstrap_info
-      changed_when: false
-      retries: 12
-      delay: 5
-      until: >-
-        bootstrap_info.resources | default([]) | length > 0 and
-        bootstrap_info.resources[0].status.health.status == 'Healthy' and
-        bootstrap_info.resources[0].status.operationState.phase == 'Succeeded'
-      failed_when: >-
-        bootstrap_info.resources | default([]) | length == 0 or
-        bootstrap_info.resources[0].status.health.status != 'Healthy' or
-        bootstrap_info.resources[0].status.operationState.phase != 'Succeeded'
-
-    - name: SAW applications are Synced and Healthy
-      kubernetes.core.k8s_info:
-        api_version: argoproj.io/v1alpha1
-        kind: Application
-        namespace: openshift-gitops
-        name: "{{ item }}"
-      register: saw_app_info
-      changed_when: false
-      failed_when: >-
-        saw_app_info.resources | default([]) | length == 0 or
-        saw_app_info.resources[0].status.sync.status != 'Synced' or
-        saw_app_info.resources[0].status.health.status != 'Healthy'
-      loop: "{{ saw_apps }}"
-      loop_control:
-        label: "{{ item }}"
-
     - name: Tenant deployments are available
       kubernetes.core.k8s_info:
         api_version: apps/v1
@@ -259,10 +199,25 @@
         timeout: 30
       register: store_index
       changed_when: false
+      # Stores appear before their documents do; wait for the stores themselves.
       retries: 18
       delay: 10
       until: (store_index.json.data | default([]) | length) > 0
-      failed_when: (store_index.json.data | default([]) | length) == 0
+      failed_when: false
+
+    - name: llama-stack has vector stores
+      ansible.builtin.assert:
+        that:
+          - (store_index.json.data | default([]) | length) > 0
+        fail_msg: >-
+          llama-stack reports no vector stores (HTTP
+          {{ store_index.status | default('unreachable') }}), so no knowledge
+          base exists and modules 2 and 3 cannot answer. Store creation happens
+          in the fetch-and-store pipeline: check its pods in {{ rag_ns }}. A
+          failed artifact upload (for example NoSuchBucket because the DSPA did
+          not create the mlpipeline bucket) stops the pipeline before
+          store_documents runs.
+        quiet: true
 
     - name: Read vector store document counts from llama-stack
       ansible.builtin.uri:
