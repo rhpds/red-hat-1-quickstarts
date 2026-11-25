@@ -1,7 +1,7 @@
 = AI Quickstart PPE Compliance Monitor — Training a New Model
 :imagesdir: ../images
 
-In the last module you watched off-the-shelf and custom models run in the app. Customers will ask the next question right away: "Can it detect *our* things?" In this module you'll answer it by training a new model that detects identification badges.
+In the last module you watched off-the-shelf and custom models run in the app. Customers will ask the next question right away: "Can it detect *our* things?" In this module you'll explore the training process using identification badges as an example.
 
 You'll use two tools that come with the QuickStart: *Label Studio* to draw boxes on images, and *JupyterLab* to train a YOLO model from those boxes.
 
@@ -11,12 +11,11 @@ Allow approximately 25 minutes.
 
 * Label objects with bounding boxes in Label Studio and export them in YOLO format
 * Train a YOLO model on a small badge dataset in JupyterLab
-* Test the trained model on an image it has never seen
-* Explain to a customer how little data it takes to get started
+* Explain the difference between a training demonstration and a reliable custom detector
 
 == The Story
 
-Off-the-shelf models know common things such as people, cars and birds. They don't know a customer's badge design, part number or product defect. Training a custom model used to mean a data science project. With this QuickStart it is three steps: label a few images, run a notebook, deploy the result.
+Off-the-shelf models know common things such as people, cars and birds. They don't know a customer's badge design, part number or product defect. This QuickStart lets you explore the custom training workflow: label images, run a notebook, and find the saved model weights. Building a reliable detector also requires representative data and evaluation before deployment.
 
 == Exercise 1: Label Images in Label Studio
 
@@ -39,6 +38,16 @@ Your images show as completed in the project, and the YOLO export downloads as a
 == Exercise 2: Train the Model in JupyterLab
 
 Labeling a full dataset takes time, so this exercise uses 15 training images and 6 validation images that are already labeled.
+
+[NOTE]
+====
+These images are only a sample to demonstrate the training process. Training a model to reliably identify an object typically requires hundreds or thousands of varied, labeled images that represent the intended use case.
+====
+
+[NOTE]
+====
+The Jupyter notebook demonstrates how training works. Running it with this sample dataset will *not* produce a well-trained badge detector.
+====
 
 . Open link:https://ppe-{guid}-jupyter-user-{guid}-ppe.{openshift_cluster_ingress_domain}/[JupyterLab,window=blank].
 ifdef::ppe_jupyter_token[]
@@ -89,7 +98,7 @@ The output shows `train_images: 15 files` and `val_images: 6 files`.
 
 Training starts from a small pretrained model (`yolov8n.pt`) and adjusts it to recognize badges. Each epoch is one pass over the images, and the output prints a progress line for each one. On the lab's CPU this takes a few minutes.
 
-Tell the customer: "Fifteen labeled pictures and a few minutes of CPU time. No GPU, no data science team."
+Tell the customer: "This small sample shows how training works on a CPU. A reliable detector would need a much larger, representative labeled dataset and evaluation."
 
 === Verify
 
@@ -100,46 +109,22 @@ The cell finishes with `✓ TRAINING COMPLETE` and the path `runs/detect/badge-d
 If you run the training cell more than once, the new results are saved as `badge-demo2`, `badge-demo3` and so on. Use the path printed at the end of the training output.
 ====
 
-== Exercise 3: Test the New Model
-
-. Add a new cell at the end of the notebook, paste this code and run it:
-+
-[source,python]
-----
-from IPython.display import Image, display
-from ultralytics import YOLO
-
-model = YOLO("runs/detect/badge-demo/weights/best.pt")
-result = model.predict("upload/val_images/multiplebadges.jpg", conf=0.25)[0]
-result.save("prediction.jpg")
-display(Image("prediction.jpg"))
-----
-. Look at the image. The model draws `Badge` boxes on an image it never saw during training.
-. Optional: in the file browser, open `runs/detect/badge-demo/results.png` to see the training curves. The loss lines going down mean the model was learning.
-
-With only 20 epochs, the model may miss a badge or draw a low-confidence box. More epochs and more labeled images improve it.
-
-=== Verify
-
-The test image shows at least one box labeled `Badge`.
-
 == From Notebook to the App
 
-The trained `best.pt` file is the model. To run it in the PPE Compliance Monitor, it is converted to OpenVINO format and added to the model server. It then becomes a new scenario through *+ Add New Video Source*, the same way the bird model you saw in the last module was added. That step is part of deploying the QuickStart rather than demoing it.
+The trained `best.pt` file contains the model weights. For a model that has been trained and evaluated for its intended use, deployment in the PPE Compliance Monitor involves converting it to OpenVINO format and adding it to the model server. It then becomes a new scenario through *+ Add New Video Source*, the same way the bird model you saw in the last module was added. That step is part of deploying the QuickStart rather than demoing it. This lab's sample model is a training demonstration and is not ready for reliable badge detection in the app.
 
 == Learning Outcomes Checkpoint
 
 * [ ] Create a Label Studio project, draw boxes and export in YOLO format
 * [ ] Run the training notebook and find `best.pt`
-* [ ] Show the trained model detecting badges on a new image
-* [ ] Explain to a customer what it takes to train a model for their own objects
+* [ ] Explain why reliable detection needs more representative labeled data and separate evaluation
 
 == Key Takeaways
 
-* A custom detector needs labeled examples, not a large research effort.
-* Label Studio and JupyterLab ship with the QuickStart, so the full loop runs on Red Hat OpenShift AI.
-* The same app from the last module can run the new model as one more scenario.
+* The sample dataset demonstrates the training workflow; it does not produce a well-trained badge detector.
+* Label Studio and JupyterLab ship with the QuickStart, so labeling and training run on Red Hat OpenShift AI.
+* Reliable detection requires a much larger, representative labeled dataset and evaluation before a custom model is deployed in the app.
 
 == Conclusion
 
-You took a new object from labeled pictures to a working model in about 25 minutes. That closes the PPE story: show the app detecting safety gear, then show the customer how it learns to detect their own objects.
+You practiced labeling images, running training, and locating the saved model weights in about 25 minutes. That closes the PPE story: show the app detecting safety gear, then demonstrate the workflow for training a custom model and explain the data and evaluation needed to make it reliable.
